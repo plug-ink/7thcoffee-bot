@@ -19,17 +19,18 @@ def get_client_keyboard_with_back():
 
 # ================== БАРИСТА ==================
 # ================== БАРИСТА ==================
+# ================== БАРИСТА ==================
 def get_barista_keyboard():
-    """Клавиатура баристы ДО сканирования"""
+    """Клавиатура баристы БЕЗ кнопки Скан QR"""
     keyboard = [
-        [KeyboardButton("📷 Скан QR"), KeyboardButton("ℹ️ Акции")]
+        [KeyboardButton("🎟 Акции")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_barista_keyboard_with_back():
-    """Клавиатура баристы ДО сканирования (для админа)"""
+    """Клавиатура баристы БЕЗ кнопки Скан QR (для админа)"""
     keyboard = [
-        [KeyboardButton("📷 Скан QR"), KeyboardButton("ℹ️ Акции")],
+        [KeyboardButton("🎟 Акции")],
         [KeyboardButton("🔙 Назад")]  # Возврат в настройки админа
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -46,7 +47,7 @@ def get_barista_action_keyboard():
 def get_admin_main_keyboard():
     keyboard = [
         [KeyboardButton("👥 Баристы"), KeyboardButton("👤 Посетители")],
-        [KeyboardButton("⚙️ Настройки")]
+        [KeyboardButton("📣 Рассылка"), KeyboardButton("⚙️ Опции")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -70,7 +71,7 @@ def get_admin_customers_keyboard_after_list():
 def get_admin_settings_keyboard():
     keyboard = [
         [KeyboardButton("📝 Изменить акции")],
-        [KeyboardButton("👤 Режим клиента"), KeyboardButton("👨‍💼 Режим бариста")],
+        [KeyboardButton("🤎 Я гость"), KeyboardButton("🐾 Я бариста")],
         [KeyboardButton("🔙 Назад")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -88,7 +89,7 @@ def get_admin_promotion_keyboard():
 def get_role_switcher_keyboard():
     keyboard = [
         [KeyboardButton("👑 Режим админа")],
-        [KeyboardButton("👨‍💼 Режим бариста"), KeyboardButton("👤 Режим клиента")]
+        [KeyboardButton("👨‍💼 Я бариста"), KeyboardButton("👤 Я ")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

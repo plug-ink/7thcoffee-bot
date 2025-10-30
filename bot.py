@@ -5,20 +5,88 @@ from config import BOT_TOKEN, ADMIN_IDS
 from database import Database
 from qr_manager import generate_qr_code, parse_qr_data, read_qr_from_image
 from keyboards import *
+import asyncio
+
+
+def get_coffee_progress(current, total):
+    """Создает визуальный прогресс-бар из чашек кофе"""
+    filled = min(current, total)
+    
+    if filled >= total:
+        # Все 7 чашек заполнены - подарок активирован
+        return "☕" * total
+    else:
+        empty = total - 1 - filled  # 6 клеток + 1 подарочная
+        progress = "☕" * filled     # Заполненные чашки
+        progress += "◻" * empty     # Пустые клетки до подарка
+        progress += "⚪"             # Подарочная чашка (7-я)
+        return progress
+
+
 async def notify_customer(bot, customer_id, new_count, required):
     remaining = max(0, required - new_count)
+    
+    # Создаем визуальный прогресс
+    progress_bar = get_coffee_progress(new_count, required)
+    
+    # ОТПРАВЛЯЕМ СТИКЕР КЛИЕНТУ
+ # ОТПРАВЛЯЕМ СТИКЕР КЛИЕНТУ (исчезает через 5 секунд)
+    try:
+        sticker_msg = await bot.send_sticker(customer_id, "CAACAgIAAxkBAAIBFWkB1x0GehJqP7TlF0tWTroGbzgHAAKRfAACc7LwS5RnG-NFfOfvNgQ")
+    
+    # Удаляем стикер через 5 секунд
+        async def delete_sticker():
+            await asyncio.sleep(4)
+            try:
+                await sticker_msg.delete()
+            except Exception:
+                pass  # Игнорируем ошибки удаления
+    
+    # Запускаем удаление в фоне
+        asyncio.create_task(delete_sticker())
+    
+    except Exception as e:
+        print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
+
+    await asyncio.sleep(3)
+
+    # Основное сообщение
+    # Основное сообщение
     if new_count == 0:
+    # Анимация полного прогресса
+        full_progress = "☕" * required
+        progress_msg = await bot.send_message(customer_id, f"{full_progress}")
+        await asyncio.sleep(1)
+        await progress_msg.delete()
+    
         await bot.send_message(
             customer_id,
-            "🎉 Поздравляем, напиток в подарок ваш! Покажите это сообщение бариста."
-        )
+        "🎉 Поздравляем, напиток в подарок ваш! Покажите это сообщение бариста."
+    )
     else:
-        await bot.send_message(
-            customer_id,
-            f"☕ +1 к вашей карте. До бесплатного напитка осталось: {remaining}"
-        )
+        if remaining == 1:
+            message = f"✔ +1 к вашей карте\n\n{progress_bar}\n\nСледующий напиток в подарок"
+        else:
+            message = f"✔ +1 к вашей карте\n\n{progress_bar}"
+    
+        await bot.send_message(customer_id, message)
 
+async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для получения ID любого стикера"""
+    await update.message.reply_text("Отправьте мне стикер чтобы получить его ID")
 
+# И обработчик для стикеров будет использовать ту же логику
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик для получения ID стикера"""
+    sticker = update.message.sticker
+    sticker_id = sticker.file_id
+    
+    await update.message.reply_text(
+        f"📦 ID стикера:\n`{sticker_id}`\n\n"
+        f"🎭 Эмодзи: {sticker.emoji or 'нет'}\n"
+        f"📏 Набор: {sticker.set_name or 'нет'}",
+        parse_mode='Markdown'
+    )
 db = Database()
 
 # ================== СИСТЕМА СОСТОЯНИЙ ==================
@@ -55,19 +123,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif role == 'barista':
         await show_barista_main(update)
     else:
-        await show_client_main(update)
-    print(f"🔍 user_id={user_id}, username=@{user.username}")   # ← добавь
-    ...
+        await show_client_main(update, context)  # ← ДОБАВЬТЕ context здесь
+    print(f"🔍 user_id={user_id}, username=@{user.username}")
     print(f"📨 роль={get_user_role(user_id, user.username)}")
 # ================== РЕЖИМ КЛИЕНТА ==================
-async def show_client_main(update: Update):
+async def show_client_main(update: Update, context: ContextTypes.DEFAULT_TYPE = None):
     user = update.effective_user
+    user_id = user.id
     role = get_user_role(user.id, user.username)
 
     text = """
-👤 Добро пожаловать в CoffeeRina!
-
-Участвуйте в акции и получайте бесплатные напитки!
+🤎 Добро пожаловать в CoffeeRina (bot)!
     """
 
     keyboard = get_client_keyboard_with_back() if role == 'admin' else get_client_keyboard()
@@ -76,6 +142,12 @@ async def show_client_main(update: Update):
         await update.message.reply_text(text, reply_markup=keyboard)
     else:
         await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+    
+    # ДОБАВЬТЕ ЭТОТ БЛОК: автоматическая отправка QR-кода клиенту
+    if role == 'client' or (role == 'admin' and context and get_user_state(context) == 'client_mode'):
+        # Ждем 2 секунды перед отправкой QR-кода
+        await asyncio.sleep(1.5)
+        await send_qr_code(update, user_id)
 
 async def handle_client_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -96,9 +168,7 @@ async def show_barista_main(update: Update):
     role = get_user_role(user.id, user.username)
     
     text = """
-👨‍💼 Режим баристы CoffeeRina
-
-Готов к работе!
+🐾 Привет бариста! Отправь QR
     """
     
     if role == 'admin':
@@ -114,39 +184,18 @@ async def show_barista_main(update: Update):
         else:
             await update.callback_query.edit_message_text(text, reply_markup=get_barista_keyboard())
 
-async def handle_barista_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    user_id = update.effective_user.id
-    
-    if text == "📷 Скан QR":
-        set_user_state(context, 'scanning_qr')
-        await update.message.reply_text("📸 Отправьте фото QR-кода")
-    elif text == "ℹ️ Акции":
-        await show_barista_promotion_info(update)
-    elif text == "🔙 Назад" and is_admin(user_id):
-        set_user_state(context, 'main')
-        await show_admin_main(update)
-
-async def handle_qr_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка текстового ввода QR-кода"""
-    user_input = update.message.text
-    user_id = update.effective_user.id
-    
-    # Парсим данные QR
-    customer_id = parse_qr_data(user_input)
-    if not customer_id:
-        await update.message.reply_text("❌ Неверный формат QR-кода. Формат: coffeerina:123456")
-        return
-    
-    await process_customer_scan(update, context, customer_id)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка фотографии с QR-кодом"""
-    state = get_user_state(context)
+    """Обработка фотографии с QR-кодом ДЛЯ БАРИСТЫ"""
     user_id = update.effective_user.id
+    username = update.effective_user.username
+    state = get_user_state(context)
     
-    if state != 'scanning_qr':
-        await update.message.reply_text("❌ Сначала нажмите '📷 Скан QR' для активации режима сканирования")
+    # Проверяем, является ли пользователь бариста ИЛИ админ в режиме баристы
+    role = get_user_role(user_id, username)
+    
+    if role != 'barista' and not (role == 'admin' and state == 'barista_mode'):
+        await update.message.reply_text("❌ Эта функция доступна только баристам")
         return
     
     try:
@@ -154,36 +203,56 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await photo.get_file()
         photo_bytes = await photo_file.download_as_bytearray()
         
-        await update.message.reply_text("🔍 Обрабатываю QR-код...")
+        # Сохраняем сообщение "Обрабатываю QR-код..." чтобы потом удалить
+        processing_msg = await update.message.reply_text("🔍 Обрабатываю QR-код...")
         
         # Распознаем QR-код
         qr_data = read_qr_from_image(bytes(photo_bytes))
         if not qr_data:
-            await update.message.reply_text("❌ Не удалось распознать QR-код. Попробуйте ввести вручную: coffeerina:123456")
+            await update.message.reply_text("❌ Не удалось распознать QR-код. Попробуйте снять фото лучше или введите код вручную: coffeerina:123456")
+            await processing_msg.delete()  # ← УДАЛЯЕМ сообщение об обработке
             return
         
         customer_id = parse_qr_data(qr_data)
         if not customer_id:
             await update.message.reply_text("❌ Неверный формат распознанного QR-кода")
+            await processing_msg.delete()  # ← УДАЛЯЕМ сообщение об обработке
             return
         
-        await process_customer_scan(update, context, customer_id)
-        # Удаляем фото, которое прислал бариста
+
         await update.message.delete()
+
+        await processing_msg.delete()
+
+        await process_customer_scan(update, context, customer_id)
 
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка обработки фото: {e}")
+        # Если есть сообщение об обработке - удаляем его
+        if 'processing_msg' in locals():
+            await processing_msg.delete()
 
 async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
     """Обработка сканирования клиента"""
+    # ДОБАВЛЕНО: получаем роль и состояние пользователя
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    state = get_user_state(context)
+    role = get_user_role(user_id, username)
+    
     # Получаем данные клиента
     purchases = db.get_user_stats(customer_id)
     if purchases is None:
         await update.message.reply_text("❌ Клиент не найден в базе данных.")
-        set_user_state(context, 'main')
+        
+        # ДОБАВЛЕНО: правильный возврат для баристы
+        if role == 'barista' or (role == 'admin' and state == 'barista_mode'):
+            set_user_state(context, 'main')
+        else:
+            set_user_state(context, 'main')
         return
     
-    # ← ДОБАВИТЬ: Получаем информацию о пользователе
+    # остальной код без изменений...
     cursor = db.conn.cursor()
     cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
     user_info = cursor.fetchone()
@@ -192,31 +261,25 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     first_name = user_info[1] if user_info and user_info[1] else ""
     last_name = user_info[2] if user_info and user_info[2] else ""
     
-    # Формируем имя пользователя
     user_display_name = f"@{username}" if username != "Не указан" else f"{first_name} {last_name}".strip()
     if not user_display_name:
         user_display_name = "Гость"
     
     promotion = db.get_promotion()
     required = promotion[2] if promotion else 7
-    remaining = max(0, required - purchases)
     
-    # ← ИЗМЕНИТЬ текст: убрать ID, добавить username
-    text = f"""
-📋 Данные клиента:
+    # Создаем визуальный прогресс-бар
+    progress_bar = get_coffee_progress(purchases, required)
 
-👤 Пользователь: {user_display_name}
-📊 Покупок: {purchases}/{required}
-🎯 До бесплатного напитка: {remaining}
-
-{'🎉 Бесплатный напиток доступен!' if purchases >= required else 'Продолжайте в том же духе!'}
-    """
+    # Упрощенная карточка клиента для баристы
+    if purchases >= required:
+        text = f"{user_display_name}\n\n{progress_bar}\n🎉 Бесплатный напиток доступен!"
+    else:
+        text = f"{user_display_name}\n\n{progress_bar}"
     
-    # Сохраняем ID клиента для дальнейших действий
     context.user_data['current_customer'] = customer_id
     set_user_state(context, 'barista_action')
     
-    # ОДИНАКОВЫЕ КНОПКИ ДЛЯ ВСЕХ ПОСЛЕ СКАНИРОВАНИЯ
     keyboard = [
         [KeyboardButton("✅ Засчитать покупку")],
         [KeyboardButton("🔙 Назад")]
@@ -224,12 +287,11 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(text, reply_markup=reply_markup)
+
 # ================== РЕЖИМ АДМИНА ==================
 async def show_admin_main(update: Update):
     text = """
 👑 Панель администратора CoffeeRina
-
-Выберите раздел для управления:
     """
     if update.message:
         await update.message.reply_text(text, reply_markup=get_admin_main_keyboard())
@@ -245,17 +307,180 @@ async def handle_admin_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "👤 Посетители":
         set_user_state(context, 'admin_customers')
         await show_all_customers(update)
-    elif text == "⚙️ Настройки":
+    elif text == "📣 Рассылка":  # ← ДОБАВИТЬ ЭТО
+        set_user_state(context, 'broadcast_message')
+        await update.message.reply_text("✍ Введите текст для рассылки:")
+    elif text == "⚙️ Опции":
         set_user_state(context, 'admin_settings')
         await show_admin_settings(update)
 
+# ================== РАССЫЛКА ==================
+async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка текста рассылки"""
+    if get_user_state(context) != 'broadcast_message':
+        return
+    
+    # ЕСЛИ это кнопка - выходим из состояния рассылки
+    if update.message.text in ["👥 Баристы", "👤 Посетители", "⚙️ Опции", "📣 Рассылка", "🔙 Назад"]:
+        set_user_state(context, 'main')
+        await handle_admin_main(update, context)
+        return
+    
+    broadcast_text = update.message.text
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ Доступ запрещён")
+        set_user_state(context, 'main')
+        return
+    
+    # Сохраняем текст для отправки
+    context.user_data['broadcast_text'] = broadcast_text
+    context.user_data['admin_chat_id'] = user_id
+    
+    # ПРЕДПРОСМОТР с инлайн кнопками
+    preview_text = f"{broadcast_text}"
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Отправить", callback_data="broadcast_send"),
+            InlineKeyboardButton("❌ Отменить", callback_data="broadcast_cancel")
+        ]
+    ]
+    
+    preview_msg = await update.message.reply_text(
+        preview_text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    context.user_data['preview_msg_id'] = preview_msg.message_id
+    set_user_state(context, 'broadcast_preview')
+
+async def handle_broadcast_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка инлайн кнопок рассылки"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    
+    if not is_admin(user_id):
+        await query.edit_message_text("❌ Доступ запрещён")
+        return
+    
+    if data == "broadcast_send":
+        await send_broadcast_to_users(update, context)
+    elif data == "broadcast_cancel":
+        await query.edit_message_text("❌ Рассылка отменена")
+        set_user_state(context, 'main')
+    elif data == "broadcast_delete":
+        await delete_broadcast_from_users(update, context)
+
+async def send_broadcast_to_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет рассылку пользователям"""
+    query = update.callback_query
+    broadcast_text = context.user_data.get('broadcast_text')
+    
+    if not broadcast_text:
+        await query.edit_message_text("❌ Ошибка: текст рассылки не найден")
+        return
+    
+    # Обновляем существующее сообщение - показываем "отправка..."
+    await query.edit_message_text(
+        f"🔄 Отправка рассылки...\n\n{broadcast_text}"
+    )
+    
+    # Получаем всех пользователей
+    all_user_ids = db.get_all_user_ids()
+    sent_count = 0
+    failed_count = 0
+    sent_messages = []  # Сохраняем (user_id, message_id)
+    
+    admin_id = context.user_data.get('admin_chat_id')
+    
+    for customer_id in all_user_ids:
+        if customer_id == admin_id:
+            continue
+            
+        try:
+            sent_msg = await context.bot.send_message(
+                chat_id=customer_id,
+                text=broadcast_text
+            )
+            sent_count += 1
+            sent_messages.append((customer_id, sent_msg.message_id))
+        except Exception as e:
+            print(f"❌ Не удалось отправить пользователю {customer_id}: {e}")
+            failed_count += 1
+        await asyncio.sleep(0.1)
+    
+    # Сохраняем информацию для удаления
+    if sent_messages:
+        context.user_data['last_broadcast'] = {
+            'messages': sent_messages,
+            'text': broadcast_text
+            # Убрали timestamp - он не нужен для функциональности
+        }
+        
+        # ОБНОВЛЯЕМ СУЩЕСТВУЮЩЕЕ сообщение с кнопкой удаления
+        result_text = (
+            f"✅ Рассылка отправлена!\n"
+            f"📤 Отправлено: {sent_count}\n"
+            f"❌ Не удалось: {failed_count}\n\n"
+            f"Текст: {broadcast_text}"
+        )
+        
+        keyboard = [[
+            InlineKeyboardButton("🗑️ Удалить у всех", callback_data="broadcast_delete")
+        ]]
+        
+        # ОБНОВЛЯЕМ существующее сообщение с кнопкой
+        await query.edit_message_text(
+            result_text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await query.edit_message_text("❌ Не удалось отправить ни одному пользователю")
+    
+    set_user_state(context, 'main')
+
+async def delete_broadcast_from_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляет рассылку у всех пользователей"""
+    query = update.callback_query
+    await query.answer()
+    
+    broadcast_data = context.user_data.get('last_broadcast')
+    if not broadcast_data:
+        await query.edit_message_text("❌ Нет данных о последней рассылке")
+        return
+    
+    # Обновляем сообщение - показываем "удаление..."
+    await query.edit_message_text("🔄 Удаление сообщений у пользователей...")
+    
+    deleted_count = 0
+    for user_id, message_id in broadcast_data['messages']:
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=message_id)
+            deleted_count += 1
+        except Exception as e:
+            print(f"❌ Не удалось удалить у {user_id}: {e}")
+        await asyncio.sleep(0.1)
+    
+    await query.edit_message_text(
+        f"🗑️ Удалено {deleted_count} сообщений рассылки\n"
+        f"Текст: {broadcast_data['text']}"
+    )
+    
+    # Очищаем данные
+    context.user_data.pop('last_broadcast', None)
+    
 async def show_barista_management(update: Update):
     baristas = db.get_all_baristas()
-    text = "👥 Управление баристами:\n\n"
+    text = "📜 Список барист:\n\n"
 
     if baristas:
         for barista in baristas:
-            username = barista[1]          # ← только username
+            username = barista[0]          # ← только username
             text += f"@{username}\n"
     else:
         text += "Баристы не добавлены"
@@ -263,7 +488,7 @@ async def show_barista_management(update: Update):
     text += "\nВыберите действие:"
     await update.message.reply_text(text, reply_markup=get_admin_barista_keyboard())
 async def show_customer_management(update: Update):
-    text = "👤 Управление посетителями\n\nИспользуйте кнопки ниже для поиска и управления клиентами"
+    text = "📒 Посетители\n\nИспользуйте кнопки ниже для поиска и управления клиентами"
     await update.message.reply_text(text, reply_markup=get_admin_customers_keyboard())
 async def show_all_customers(update: Update):
     print('[DEBUG] show_all_customers вызвана')
@@ -274,7 +499,7 @@ async def show_all_customers(update: Update):
     if not users:
         text = "📂 Клиентов пока нет."
     else:
-        text = "📋 Список пользователей:\n\n"
+        text = "📒 Список пользователей:\n\n"
         for u in users:
             user_id, username, first_name, last_name, purchases = u
             print(f"[DEBUG] user_id={user_id}, username='{username}', first_name='{first_name}', last_name='{last_name}'")
@@ -288,7 +513,7 @@ async def show_all_customers(update: Update):
 async def show_admin_settings(update: Update):
     promotion = db.get_promotion()
     text = f"""
-⚙️ Настройки системы
+⚙️ Опции
 
 Текущая акция: {promotion[1] if promotion else 'Не настроена'}
 Условие: {promotion[2] if promotion else 7} покупок → бесплатный напиток
@@ -330,10 +555,10 @@ async def handle_admin_settings(update: Update, context: ContextTypes.DEFAULT_TY
     if text == "📝 Изменить акции":
         set_user_state(context, 'promotion_management')
         await show_promotion_management(update)
-    elif text == "👤 Режим клиента":
+    elif text == "🤎 Я гость":
         set_user_state(context, 'client_mode')
-        await show_client_main(update)
-    elif text == "👨‍💼 Режим бариста":
+        await show_client_main(update, context)  # ← ДОБАВЬТЕ context
+    elif text == "🐾 Я бариста":
         set_user_state(context, 'barista_mode')
         await show_barista_main(update)
     elif text == "🔙 Назад":
@@ -434,7 +659,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     
     data = query.data
-    
+    if data.startswith('broadcast_'):
+        await handle_broadcast_buttons(update, context)
+        return
     # Простая обработка - если остались старые callback'и, просто закрываем их
     if data.startswith('add_') or data.startswith('remove_') or data.startswith('cancel_') or data == 'cancel':
         await query.edit_message_text("🔄 Это меню устарело. Используйте новые кнопки ниже.")
@@ -506,7 +733,7 @@ async def show_barista_promotion_info(update: Update):
 
 📋 Инструкция:
 1. Клиент показывает QR-код
-2. Вы сканируете его через "Скан QR"
+2. Вы отправляете фото QR в этот чат
 3. Нажимаете "✅ Засчитать покупку"
 4. Система автоматически обновляет счетчик
         """
@@ -524,13 +751,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Определяем роль пользователя
     role = get_user_role(user_id, username)
+
+    print(f"🔴 DEBUG ВХОД: text='{text}', state='{state}', role='{role}'")
     
     print(f"📨 Сообщение: '{text}', состояние: {state}, роль: {role}")
         # Обработка кнопки "Назад" в режиме баристы (для админа)
-    if text == "🔙 Назад" and state == 'barista_mode':
-        set_user_state(context, 'admin_settings')
-        await show_admin_settings(update)
-        return
 
     # Обработка меню бариста для админа
     if state == 'admin_barista':
@@ -546,14 +771,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             set_user_state(context, 'main')
             await show_admin_main(update)
         return
-    if state == 'main' and role in ['barista', 'admin']:
-        if text == "📷 Скан QR":
-            set_user_state(context, 'scanning_qr')
-            await update.message.reply_text("📸 Отправьте фото QR-кода")
-            return
-        elif text == "ℹ️ Акции":
-            await show_barista_promotion_info(update)
-            return
+
     # Обработка специальных состояний ввода
     if state == 'adding_barista':
         username_input = text.replace('@', '').strip()
@@ -601,6 +819,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_promotion_management(update)
         return
     
+    elif state == 'broadcast_message':
+        await handle_broadcast_message(update, context)
+        return
+    
     elif state == 'changing_promotion_description':
         if text and text not in ['📝 Название', 'Условие', '📖 Описание', '🔙 Назад']:
             db.update_promotion(description=text)
@@ -632,71 +854,80 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("❌ Введите корректное число")
         return
-    elif state == 'scanning_qr':
-        await handle_qr_input(update, context)
+    
+    elif state == 'barista_mode':
+    # Обработка для админа в режиме баристы
+        print(f"🔍 DEBUG: Админ в режиме баристы нажал '{text}'")
+        if text == "🎟 Акции":
+            await show_barista_promotion_info(update)
+        elif text == "🔙 Назад":
+            set_user_state(context, 'admin_settings')
+            await show_admin_settings(update)
+        else:
+            await update.message.reply_text("📸 Отправьте фото QR-кода клиента для сканирования")
         return
     
     elif state == 'barista_action':
         if text == "✅ Засчитать покупку":
+        # Удаляем сообщение с кнопкой "✅ Засчитать покупку"
+            await update.message.delete()
+    
             customer_id = context.user_data.get('current_customer')
             if customer_id:
                 new_count = db.update_user_purchases(customer_id, 1)
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
-        
-                text = f"""
-✅ Покупка засчитана!
 
-Новый счетчик: {new_count}/{required}
-{'🎉 Клиент получил бесплатный напиток!' if new_count >= required else f'До бесплатного напитка: {max(0, required - new_count)}'}
-        """
+                progress_bar = get_coffee_progress(new_count, required)
+                if new_count >= required:
+                    text = f"✅ Покупка засчитана!\n\n{progress_bar}\n🎉 Клиент получил бесплатный напиток!"
+                else:
+                    text = f"✅ Покупка засчитана!\n\n{progress_bar}\nДо бесплатного напитка: {max(0, required - new_count)}"
                 await update.message.reply_text(text)
-                                # Уведомляем клиента
+            # Уведомляем клиента
                 await notify_customer(context.bot, customer_id, new_count, required)
-                set_user_state(context, 'main')
+    
             # ВСЕГДА возвращаем в меню баристы после засчитывания покупки
-                await show_barista_main(update)
+                if role == 'barista':
+                    set_user_state(context, 'main')
+                    await show_barista_main(update)
+                else:
+                    set_user_state(context, 'barista_mode')
+                    await show_barista_main(update)
+                return
             else:
                 await update.message.reply_text("❌ Ошибка: клиент не найден")
-    
-        elif text == "🔙 Назад":  # ← ДОБАВЛЯЕМ ЭТУ ПРОВЕРКУ
-            set_user_state(context, 'main')
-            await update.message.reply_text("🔙 Возвращаюсь в меню...")
-        # ВСЕГДА возвращаем в меню баристы после отмены сканирования
-            await show_barista_main(update)
-    
-            return
+
         elif text == "➖ Отменить покупку":
+        # Удаляем сообщение с кнопкой "➖ Отменить покупку"
+            await update.message.delete()
+        
             customer_id = context.user_data.get('current_customer')
             if customer_id:
                 new_count = db.update_user_purchases(customer_id, -1)
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
-            
-                text = f"""
-➖ Покупка отменена!
-
-Новый счетчик: {new_count}/{required}
-{'🎉 Бесплатный напиток доступен!' if new_count >= required else f'До бесплатного напитка: {max(0, required - new_count)}'}
-            """
+    
+            # ДОБАВЬТЕ ВИЗУАЛЬНЫЙ ПРОГРЕСС И ЗДЕСЬ
+                progress_bar = get_coffee_progress(new_count, required)
+                if new_count >= required:
+                    text = f"➖ Покупка отменена!\n\n{progress_bar}\n🎉 Бесплатный напиток доступен!"
+                else:
+                    text = f"➖ Покупка отменена!\n\n{progress_bar}\nДо бесплатного напитка: {max(0, required - new_count)}"
+        
                 await update.message.reply_text(text)
-                set_user_state(context, 'main')
                 if role == 'barista':
+                    set_user_state(context, 'main')
                     await show_barista_main(update)
                 else:
-                    await show_admin_main(update)
+                    set_user_state(context, 'barista_mode')
+                    await show_barista_main(update)
+                return
             else:
                 await update.message.reply_text("❌ Ошибка: клиент не найден")
-    
-        elif text == "🔙 Назад в меню":
-            set_user_state(context, 'main')
-            await update.message.reply_text("🔙 Возвращаюсь в меню...")
-            if role == 'barista':
-                await show_barista_main(update)
-            else:
-                await show_admin_main(update)
-    
-        return
+
+    # ... остальные существующие кнопки (🔙 Назад и т.д.) ...
+
     elif state == 'admin_customer_actions':
         print(f"[DEBUG] admin_customer_actions text='{update.message.text}'")
         customer_id = context.user_data.get('current_customer')
@@ -771,9 +1002,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Основная обработка по ролям и состояниям
     # Основная обработка по ролям и состояниям
     if state == 'main':
-        if role == 'admin':
-        # ← ДОБАВИТЬ ПРЯМУЮ ОБРАБОТКУ КНОПОК АДМИНА ↓
-            if text == "👥 Бариста":
+        if role == 'admin' and state != 'barista_mode':
+        # ← ДОЛЖНЫ БЫТЬ ВСЕ ЭТИ КНОПКИ:
+            if text == "👥 Баристы":
                 set_user_state(context, 'admin_barista')
                 await show_barista_management(update)
                 return
@@ -781,23 +1012,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print("[DEBUG] нажата кнопка Посетители")
                 set_user_state(context, 'admin_customers')
                 await show_all_customers(update)
-                return          # важно, иначе уйдёт дальше
-            elif text == "⚙️ Настройки":
+                return
+            elif text == "📣 Рассылка":  # ← ЭТА СТРОКА ДОЛЖНА БЫТЬ
+                set_user_state(context, 'broadcast_message')
+                await update.message.reply_text("✍ Введите текст для рассылки:")
+                return
+            elif text == "⚙️ Опции":
                 set_user_state(context, 'admin_settings')
                 await show_admin_settings(update)
                 return
             else:
                 await handle_admin_main(update, context)
-        elif role == 'barista':
-            await handle_barista_mode(update, context)
+        
+        elif role == 'barista' or (role == 'admin' and state == 'barista_mode'):  # ← ИЗМЕНИТЕ ЭТУ СТРОКУ
+    # Обработка кнопки "Акции" для баристы
+            print(f"🔍 DEBUG: Бариста нажал кнопку '{text}', состояние: {state}")
+            if text == "🎟 Акции":
+                await show_barista_promotion_info(update)
+            elif text == "🔙 Назад" and role == 'admin':
+                set_user_state(context, 'admin_settings')
+                await show_admin_settings(update)
+            else:
+        # Если бариста отправил текст (не кнопку), просто игнорируем
+                await update.message.reply_text("📸 Отправьте фото QR-кода клиента для сканирования")
+            return
+
         else:
             await handle_client_mode(update, context)
     
     elif state == 'client_mode':
         await handle_client_mode(update, context)
-    
-    elif state == 'barista_mode':
-        await handle_barista_mode(update, context)
     
     elif state == 'admin_barista':
         await handle_admin_barista_management(update, context)
@@ -889,7 +1133,7 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
         return
 
     print("[DEBUG] 6. user_data ПУСТОЙ – сообщаем 'не найден'")
-    await update.message.reply_text("❌ Пользователь не найден. Попробуйте ещё раз:")
+    await update.message.reply_text("❌ Пользователь не найден.")
 # ================== ЗАПУСК ==================
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
@@ -899,6 +1143,8 @@ def main():
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("backup", cmd_backup))
+    application.add_handler(CommandHandler("sticker_id", get_sticker_id))
+    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
 
     # === ежедневный бэкап (04:00) и чистка (04:01) ===
     import threading, schedule, time

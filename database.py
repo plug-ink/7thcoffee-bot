@@ -218,3 +218,11 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute('SELECT user_id, username, first_name, last_name, purchases_count FROM users ORDER BY created_at DESC')
         return cursor.fetchall()
+    
+    def get_all_user_ids(self): 
+        """Получить всех пользователей бота (только user_id для рассылки)"""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT user_id FROM users')
+        return [row[0] for row in cursor.fetchall()]  # ← возвращаем список ID
+
+    
