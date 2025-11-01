@@ -264,14 +264,17 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     promotion = db.get_promotion()
     required = promotion[2] if promotion else 7
     
+    # ИСПРАВЛЕНИЕ: правильный расчет до бесплатного напитка
+    remaining_for_free = max(0, required - purchases - 1)
+    
     # Создаем визуальный прогресс-бар
     progress_bar = get_coffee_progress(purchases, required)
 
-    # Упрощенная карточка клиента для баристы
+# Упрощенная карточка клиента для баристы
     if purchases >= required:
         text = f"{user_display_name}\n\n{progress_bar}\n🎉 Бесплатный напиток доступен!"
     else:
-        text = f"{user_display_name}\n\n{progress_bar}"
+        text = f"{user_display_name}\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
     
     context.user_data['current_customer'] = customer_id
     set_user_state(context, 'barista_action')
@@ -697,46 +700,86 @@ async def show_user_status(update: Update, user_id: int):
 
 async def show_promotion_info(update: Update):
     promotion = db.get_promotion()
-    user_id = update.effective_user.id
+    user = update.effective_user
+    user_id = user.id
     purchases = db.get_user_stats(user_id)
     required = promotion[2] if promotion else 7
-    remaining = max(0, required - purchases)
-
+    
+    # Формируем username для отображения
+    username = f"@{user.username}" if user.username else f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if not username:
+        username = "Гость"
+    
+    # Создаем прогресс-бар
+    progress_bar = get_coffee_progress(purchases, required)
+    
+    # Первое сообщение - информация об акции
     if promotion:
-        text = (
+        promotion_text = (
             f"🎁 {promotion[1]}\n\n"
-            f"{promotion[3] if promotion[3] else 'Покажите QR-код при каждой покупке'}\n\n"
-            f"📊 Ваш прогресс: {purchases}/{required}\n"
-            f"🎯 До напитка в подарок: {remaining}"
+            f"{promotion[3] if promotion[3] else 'Покажите QR-код при каждой покупке'}"
         )
-        if purchases >= required:
-            text += "\n\n🎉 Следующий напиток в подарок!"
     else:
-        text = "Акция ещё не настроена"
-
-    await update.message.reply_text(text)
+        promotion_text = "Акция ещё не настроена"
+    
+    # Второе сообщение - прогресс-бар с username
+    progress_text = f"{username}\n\n{progress_bar}"
+    
+    # Отправляем сообщение об акции и сохраняем его для удаления
+    promotion_msg = await update.message.reply_text(promotion_text)
+    
+    # Отправляем прогресс-бар
+    await update.message.reply_text(progress_text)
+    
+    # Удаляем сообщение об акции через 3 секунды
+    async def delete_promotion_message():
+        await asyncio.sleep(3)
+        try:
+            await promotion_msg.delete()
+        except Exception:
+            pass  # Игнорируем ошибки удаления
+    
+    # Запускаем удаление в фоне
+    asyncio.create_task(delete_promotion_message())
 
 async def show_barista_promotion_info(update: Update):
     promotion = db.get_promotion()
-    if promotion:
-        text = f"""
-🎁 Информация об акции:
-
-{promotion[1]}
-{promotion[3] if promotion[3] else 'Клиент показывает QR-код при каждой покупке'}
-
-Условие: {promotion[2]} покупок → бесплатный напиток
-
-📋 Инструкция:
-1. Клиент показывает QR-код
-2. Вы отправляете фото QR в этот чат
-3. Нажимаете "✅ Засчитать покупку"
-4. Система автоматически обновляет счетчик
-        """
-    else:
-        text = "Акция не настроена"
     
-    await update.message.reply_text(text)
+    # Первое сообщение - информация об акции (как у клиента)
+    if promotion:
+        promotion_text = (
+            f"🎁 {promotion[1]}\n\n"
+            f"{promotion[3] if promotion[3] else 'Покажите QR-код при каждой покупке'}"
+        )
+    else:
+        promotion_text = "Акция ещё не настроена"
+    
+    # Второе сообщение - инструкция для баристы (остается навсегда)
+    instruction_text = """
+📋 Инструкция:
+
+ - Посетитель показывает свой QR
+ - Вы отправляете фото QR в этот чат  
+ - Нажимаете "✅ Засчитать покупку"
+ - Система автоматически обновляет счетчик
+    """
+    
+    # Отправляем сообщение об акции и сохраняем его для удаления
+    promotion_msg = await update.message.reply_text(promotion_text)
+    
+    # Отправляем инструкцию - она остается навсегда
+    await update.message.reply_text(instruction_text)
+    
+    # Удаляем только сообщение об акции через 3 секунды (как у клиента)
+    async def delete_promotion_message():
+        await asyncio.sleep(3)
+        try:
+            await promotion_msg.delete()
+        except Exception:
+            pass  # Игнорируем ошибки удаления
+    
+    # Запускаем удаление только сообщения с акцией
+    asyncio.create_task(delete_promotion_message())
 
 # ================== ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ==================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -870,16 +913,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
             customer_id = context.user_data.get('current_customer')
             if customer_id:
+            # Добавляем покупку
                 new_count = db.update_user_purchases(customer_id, 1)
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
 
+            # ИСПРАВЛЕНИЕ: считаем от НОВОГО состояния (после добавления)
+                remaining_for_free = max(0, required - new_count - 1)
+            
                 progress_bar = get_coffee_progress(new_count, required)
                 if new_count >= required:
                     text = f"✅ Покупка засчитана!\n\n{progress_bar}\n🎉 Клиент получил бесплатный напиток!"
                 else:
-                    text = f"✅ Покупка засчитана!\n\n{progress_bar}\nДо бесплатного напитка: {max(0, required - new_count)}"
+                    text = f"✅ Покупка засчитана!\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
                 await update.message.reply_text(text)
+            
             # Уведомляем клиента
                 await notify_customer(context.bot, customer_id, new_count, required)
     
