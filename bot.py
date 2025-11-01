@@ -30,46 +30,42 @@ async def notify_customer(bot, customer_id, new_count, required):
     progress_bar = get_coffee_progress(new_count, required)
     
     # ОТПРАВЛЯЕМ СТИКЕР КЛИЕНТУ
- # ОТПРАВЛЯЕМ СТИКЕР КЛИЕНТУ (исчезает через 5 секунд)
     try:
-        sticker_msg = await bot.send_sticker(customer_id, "CAACAgIAAxkBAAIBFWkB1x0GehJqP7TlF0tWTroGbzgHAAKRfAACc7LwS5RnG-NFfOfvNgQ")
+        sticker_msg = await bot.send_sticker(customer_id, "CAACAgIAAxkBAAITEmkF2bbusfTxR6b5ouNj4ncJKZF2AAKRfAACc7LwS4IChZq19_7vNgQ")
     
-    # Удаляем стикер через 5 секунд
+    # Удаляем стикер через 2 секунды и потом отправляем сообщение
         async def delete_sticker():
-            await asyncio.sleep(4)
+            await asyncio.sleep(2)  # Стикер висит 2 секунды
             try:
                 await sticker_msg.delete()
             except Exception:
                 pass  # Игнорируем ошибки удаления
+            
+            # ПОСЛЕ удаления стикера отправляем сообщение
+            if new_count == 0:
+                # Анимация полного прогресса
+                full_progress = "☕" * required
+                progress_msg = await bot.send_message(customer_id, f"{full_progress}")
+                await asyncio.sleep(1)
+                await progress_msg.delete()
+            
+                await bot.send_message(
+                    customer_id,
+                    "🎉 Поздравляем, напиток в подарок ваш! Покажите это сообщение бариста."
+                )
+            else:
+                if remaining == 1:
+                    message = f"✔ +1 к вашей карте\n\n{progress_bar}\n\nСледующий напиток в подарок"
+                else:
+                    message = f"✔ +1 к вашей карте\n\n{progress_bar}"
+            
+                await bot.send_message(customer_id, message)
     
     # Запускаем удаление в фоне
         asyncio.create_task(delete_sticker())
     
     except Exception as e:
         print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
-
-    await asyncio.sleep(3)
-
-    # Основное сообщение
-    # Основное сообщение
-    if new_count == 0:
-    # Анимация полного прогресса
-        full_progress = "☕" * required
-        progress_msg = await bot.send_message(customer_id, f"{full_progress}")
-        await asyncio.sleep(1)
-        await progress_msg.delete()
-    
-        await bot.send_message(
-            customer_id,
-        "🎉 Поздравляем, напиток в подарок ваш! Покажите это сообщение бариста."
-    )
-    else:
-        if remaining == 1:
-            message = f"✔ +1 к вашей карте\n\n{progress_bar}\n\nСледующий напиток в подарок"
-        else:
-            message = f"✔ +1 к вашей карте\n\n{progress_bar}"
-    
-        await bot.send_message(customer_id, message)
 
 async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для получения ID любого стикера"""
