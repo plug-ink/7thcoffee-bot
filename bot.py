@@ -18,8 +18,8 @@ def get_coffee_progress(current, total):
     else:
         empty = total - 1 - filled  # 6 клеток + 1 подарочная
         progress = "☕" * filled     # Заполненные чашки
-        progress += "◻" * empty     # Пустые клетки до подарка
-        progress += "⚪"             # Подарочная чашка (7-я)
+        progress += "▫" * empty     # Пустые клетки до подарка
+        progress += "💠"             # Подарочная чашка (7-я)
         return progress
 
 
@@ -529,10 +529,7 @@ async def show_admin_settings(update: Update):
     text = f"""
 ⚙️ Опции
 
-Текущая акция: {promotion[1] if promotion else 'Не настроена'}
-Условие: {promotion[2] if promotion else 7} покупок → бесплатный напиток
-
-Выберите раздел для настройки:
+Выберите раздел:
     """
     await update.message.reply_text(text, reply_markup=get_admin_settings_keyboard())
 
