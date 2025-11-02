@@ -24,7 +24,21 @@ def get_coffee_progress(current, total):
 
 
 async def notify_customer(bot, customer_id, new_count, required):
-    remaining = max(0, required - new_count)
+    # Получаем данные клиента для имени
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
+    user_info = cursor.fetchone()
+    
+    username = user_info[0] if user_info and user_info[0] else "Не указан"
+    first_name = user_info[1] if user_info and user_info[1] else ""
+    last_name = user_info[2] if user_info and user_info[2] else ""
+    
+    user_display_name = f"@{username}" if username != "Не указан" else f"{first_name} {last_name}".strip()
+    if not user_display_name:
+        user_display_name = "Гость"
+    
+    # ИСПРАВЛЕНИЕ: правильный расчет до бесплатного напитка
+    remaining_for_free = max(0, required - new_count - 1)
     
     # Создаем визуальный прогресс
     progress_bar = get_coffee_progress(new_count, required)
@@ -35,7 +49,7 @@ async def notify_customer(bot, customer_id, new_count, required):
     
     # Удаляем стикер через 2 секунды и потом отправляем сообщение
         async def delete_sticker():
-            await asyncio.sleep(2)  # Стикер висит 2 секунды
+            await asyncio.sleep(3)  # Стикер висит 2 секунды
             try:
                 await sticker_msg.delete()
             except Exception:
@@ -54,10 +68,10 @@ async def notify_customer(bot, customer_id, new_count, required):
                     "🎉 Поздравляем, напиток в подарок ваш! Покажите это сообщение бариста."
                 )
             else:
-                if remaining == 1:
-                    message = f"✔ +1 к вашей карте\n\n{progress_bar}\n\nСледующий напиток в подарок"
+                if remaining_for_free == 0:
+                    message = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nСледующий напиток в подарок"
                 else:
-                    message = f"✔ +1 к вашей карте\n\n{progress_bar}"
+                    message = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
             
                 await bot.send_message(customer_id, message)
     
@@ -280,12 +294,13 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     set_user_state(context, 'barista_action')
     
     keyboard = [
-        [KeyboardButton("✅ Засчитать покупку")],
+        [KeyboardButton("✔ Засчитать покупку")],
         [KeyboardButton("🔙 Назад")]
     ]
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(text, reply_markup=reply_markup)
+    message = await update.message.reply_text(text, reply_markup=reply_markup)
+    context.user_data['customer_card_message_id'] = message.message_id
 
 # ================== РЕЖИМ АДМИНА ==================
 async def show_admin_main(update: Update):
@@ -760,7 +775,7 @@ async def show_barista_promotion_info(update: Update):
 
  - Посетитель показывает свой QR
  - Вы отправляете фото QR в этот чат  
- - Нажимаете "✅ Засчитать покупку"
+ - Нажимаете "✔ Засчитать покупку"
  - Система автоматически обновляет счетчик
     """
     
@@ -907,31 +922,57 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     elif state == 'barista_action':
-        if text == "✅ Засчитать покупку":
-        # Удаляем сообщение с кнопкой "✅ Засчитать покупку"
-            await update.message.delete()
+        if text == "✔ Засчитать покупку":
+            # УБРАТЬ УДАЛЕНИЕ: await update.message.delete() - УДАЛИТЕ ЭТУ СТРОКУ
     
             customer_id = context.user_data.get('current_customer')
             if customer_id:
-            # Добавляем покупку
                 new_count = db.update_user_purchases(customer_id, 1)
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
 
-            # ИСПРАВЛЕНИЕ: считаем от НОВОГО состояния (после добавления)
-                remaining_for_free = max(0, required - new_count - 1)
+                # ДОБАВИТЬ: получаем имя клиента
+                cursor = db.conn.cursor()
+                cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
+                user_info = cursor.fetchone()
             
+                username = user_info[0] if user_info and user_info[0] else "Не указан"
+                first_name = user_info[1] if user_info and user_info[1] else ""
+                last_name = user_info[2] if user_info and user_info[2] else ""
+            
+                user_display_name = f"@{username}" if username != "Не указан" else f"{first_name} {last_name}".strip()
+                if not user_display_name:
+                    user_display_name = "Гость"
+
                 progress_bar = get_coffee_progress(new_count, required)
                 if new_count >= required:
-                    text = f"✅ Покупка засчитана!\n\n{progress_bar}\n🎉 Клиент получил бесплатный напиток!"
+                    text = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\n🎉 Бесплатный напиток активирован!"
                 else:
-                    text = f"✅ Покупка засчитана!\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
-                await update.message.reply_text(text)
+    # ИСПРАВЛЕНИЕ: правильный расчет до бесплатного напитка
+                    remaining_for_free = max(0, required - new_count - 1)
+                    text = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
             
-            # Уведомляем клиента
+# ЗАМЕНИТЬ СООБЩЕНИЕ вместо создания нового
+                    customer_card_message_id = context.user_data.get('customer_card_message_id')
+                    if customer_card_message_id:
+                        try:
+        # УДАЛИТЬ первое сообщение (карточку клиента)
+                            await context.bot.delete_message(
+                            chat_id=update.effective_chat.id,
+                            message_id=customer_card_message_id
+                        )
+                        except Exception:
+                            pass  # Игнорируем ошибки удаления
+    
+    # ОТПРАВИТЬ новое сообщение с отступом
+                        await update.message.reply_text(text)
+                    else:
+                        await update.message.reply_text(text)
+            
+                # Уведомляем клиента
                 await notify_customer(context.bot, customer_id, new_count, required)
     
-            # ВСЕГДА возвращаем в меню баристы после засчитывания покупки
+                # ВСЕГДА возвращаем в меню баристы после засчитывания покупки
                 if role == 'barista':
                     set_user_state(context, 'main')
                     await show_barista_main(update)
@@ -943,7 +984,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Ошибка: клиент не найден")
 
         elif text == "➖ Отменить покупку":
-        # Удаляем сообщение с кнопкой "➖ Отменить покупку"
+            # Удаляем сообщение с кнопкой "➖ Отменить покупку"
             await update.message.delete()
         
             customer_id = context.user_data.get('current_customer')
@@ -952,7 +993,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
     
-            # ДОБАВЬТЕ ВИЗУАЛЬНЫЙ ПРОГРЕСС И ЗДЕСЬ
+                # ДОБАВЬТЕ ВИЗУАЛЬНЫЙ ПРОГРЕСС И ЗДЕСЬ
                 progress_bar = get_coffee_progress(new_count, required)
                 if new_count >= required:
                     text = f"➖ Покупка отменена!\n\n{progress_bar}\n🎉 Бесплатный напиток доступен!"
@@ -969,7 +1010,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             else:
                 await update.message.reply_text("❌ Ошибка: клиент не найден")
-
     # ... остальные существующие кнопки (🔙 Назад и т.д.) ...
 
     elif state == 'admin_customer_actions':

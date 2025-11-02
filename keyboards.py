@@ -38,7 +38,7 @@ def get_barista_keyboard_with_back():
 def get_barista_action_keyboard():
     """Клавиатура после сканирования QR"""
     keyboard = [
-        [KeyboardButton("✅ Засчитать покупку")],
+        [KeyboardButton("✔ Засчитать покупку")],
         [KeyboardButton("❌ Отменить")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
