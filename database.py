@@ -7,17 +7,18 @@ class Database:
     def __init__(self, db_name='coffee_bot.db'):
         self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.create_tables()
-    
+        self.update_database_schema()  # ← ДОБАВЬ ЭТУ СТРОКУ
+
     def create_tables(self):
         cursor = self.conn.cursor()
         
-        # Пользователи (клиенты)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 first_name TEXT,
                 last_name TEXT,
+                phone TEXT,
                 purchases_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -63,6 +64,12 @@ class Database:
         self.conn.commit()
         print("✅ База данных инициализирована")
 
+    def update_user_phone(self, user_id, phone):
+        cursor = self.conn.cursor()
+        cursor.execute('UPDATE users SET phone = ? WHERE user_id = ?', (phone, user_id))
+        self.conn.commit()
+        return cursor.rowcount > 0
+    
     # === ПОЛЬЗОВАТЕЛИ ===
     def get_or_create_user(self, user_id, username="", first_name="", last_name=""):
         cursor = self.conn.cursor()
@@ -83,25 +90,22 @@ class Database:
         result = cursor.fetchone()
         return result[0] if result else 0
     def update_user_purchases(self, user_id, change):
-        """Изменяет счётчик покупок (+1 или -1) с авто-обнулением при достижении акции"""
+        """Изменяет счётчик покупок с авто-обнулением при достижении акции"""
         promo = self.get_promotion()
         required = promo[2] if promo else 7
 
         cursor = self.conn.cursor()
-    # текущее значение
         cursor.execute('SELECT purchases_count FROM users WHERE user_id = ?', (user_id,))
         current = cursor.fetchone()[0]
-
-    # новое значение
-        new_val = max(0, current + change)
-
-    # если ДОБАВЛЯЕМ +1 и достигли лимита → обнуляем
+    
+        new_val = current + change
+    
+    # Сброс при достижении точного значения required
         if change == +1 and new_val >= required:
-            cursor.execute('UPDATE users SET purchases_count = 0 WHERE user_id = ?', (user_id,))
-            self.conn.commit()
-            return 0
-
-         # иначе – просто пишем новое число
+            new_val = 0
+    
+        new_val = max(0, new_val)  # Защита от отрицательных значений
+    
         cursor.execute('UPDATE users SET purchases_count = ? WHERE user_id = ?', (new_val, user_id))
         self.conn.commit()
         return new_val
@@ -224,5 +228,32 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute('SELECT user_id FROM users')
         return [row[0] for row in cursor.fetchall()]  # ← возвращаем список ID
+    
+    def find_user_by_phone(self, phone_number):
+        """Ищет пользователя по номеру телефона"""
+        cursor = self.conn.cursor()
+    
+    # Нормализуем номер (оставляем только цифры)
+        normalized_phone = ''.join(filter(str.isdigit, phone_number))
+    
+    # Ищем в базе
+        cursor.execute('SELECT user_id FROM users WHERE phone = ?', (normalized_phone,))
+    
+        result = cursor.fetchone()
+        return result[0] if result else None
+    
+    def update_database_schema(self):
+        """Обновляет структуру базы данных если нужно"""
+        cursor = self.conn.cursor()
+    
+    # Проверяем есть ли поле phone в таблице users
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [column[1] for column in cursor.fetchall()]
+    
+        if 'phone' not in columns:
+            # Добавляем поле phone если его нет
+            cursor.execute('ALTER TABLE users ADD COLUMN phone TEXT')
+            self.conn.commit()
+            print("✅ Добавлено поле phone в таблицу users")
 
     

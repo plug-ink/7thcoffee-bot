@@ -119,10 +119,15 @@ def read_qr_from_image(image_data: bytes):
         if decoded_objects:
             return decoded_objects[0].data.decode('utf-8')
 
+        if data and is_valid_qr_format(data):
+            return data
+        else:
+            print(f"❌ Неверный формат QR-кода: {data}")
+            return None
+            
     except Exception as e:
-        print(f"Ошибка распознавания QR: {e}")
-
-    return None
+        print(f"❌ Ошибка распознавания QR: {e}")
+        return None
 
 def is_valid_qr_format(qr_text: str) -> bool:
     """Проверяет, соответствует ли текст формату нашего QR-кода"""

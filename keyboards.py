@@ -4,14 +4,15 @@ from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, 
 def get_client_keyboard():
     keyboard = [
         [KeyboardButton("📱 Мой QR")],
+        [KeyboardButton("📞 Привязать номер")],  # ← Новая кнопка
         [KeyboardButton("🎁 Акции")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_client_keyboard_with_back():
-    """Клавиатура клиента с кнопкой Назад (для админа)"""
     keyboard = [
         [KeyboardButton("📱 Мой QR")],
+        [KeyboardButton("📞 Привязать номер")],
         [KeyboardButton("🎁 Акции")],
         [KeyboardButton("🔙 Назад")]
     ]
@@ -21,17 +22,21 @@ def get_client_keyboard_with_back():
 # ================== БАРИСТА ==================
 # ================== БАРИСТА ==================
 def get_barista_keyboard():
-    """Клавиатура баристы БЕЗ кнопки Скан QR"""
+    """Клавиатура баристы с кнопкой +1 и добавлением клиента"""
     keyboard = [
-        [KeyboardButton("🎟 Акции")]
+        [KeyboardButton("☕+1")],
+        [KeyboardButton("📲 Добавить номер")],
+        [KeyboardButton("🧾 Инфо")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_barista_keyboard_with_back():
-    """Клавиатура баристы БЕЗ кнопки Скан QR (для админа)"""
+    """Клавиатура баристы с кнопкой +1 (для админа)"""
     keyboard = [
-        [KeyboardButton("🎟 Акции")],
-        [KeyboardButton("🔙 Назад")]  # Возврат в настройки админа
+        [KeyboardButton("☕+1")],
+        [KeyboardButton("📲 Добавить номер")],
+        [KeyboardButton("🧾 Инфо")],
+        [KeyboardButton("🔙 Назад")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -46,7 +51,7 @@ def get_barista_action_keyboard():
 # ================== АДМИН - ГЛАВНОЕ МЕНЮ ==================
 def get_admin_main_keyboard():
     keyboard = [
-        [KeyboardButton("👥 Баристы"), KeyboardButton("👤 Посетители")],
+        [KeyboardButton("📙 Баристы"), KeyboardButton("📒 Посетители")],
         [KeyboardButton("📣 Рассылка"), KeyboardButton("⚙️ Опции")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -55,7 +60,7 @@ def get_admin_main_keyboard():
 def get_admin_barista_keyboard():
     keyboard = [
         [KeyboardButton("➕ Добавить"), KeyboardButton("➖ Удалить")],
-        [KeyboardButton("📋 Список"), KeyboardButton("🔙 Назад")]
+        [KeyboardButton("🔙 Назад")]  # ← УБРАЛИ "📋 Список"
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
