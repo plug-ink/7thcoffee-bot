@@ -197,7 +197,7 @@ async def show_barista_main(update: Update):
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка фотографии с QR-кодом - финальная версия"""
+    """Обработка фотографии с QR-кодом"""
     user_id = update.effective_user.id
     username = update.effective_user.username
     state = get_user_state(context)
@@ -211,6 +211,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         processing_msg = await update.message.reply_text("🔍 Обрабатываю QR-код...")
         
+        # Сначала получаем фото
         photo = update.message.photo[-1]
         photo_file = await photo.get_file()
         photo_bytes = await photo_file.download_as_bytearray()
@@ -225,7 +226,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await processing_msg.edit_text("❌ Неверный формат QR-кода")
             return
         
-        await processing_msg.delete()
+        # ТЕПЕРЬ УДАЛЯЕМ ФОТО И СООБЩЕНИЕ ОБ ОБРАБОТКЕ
+        await update.message.delete()  # удаляем фото QR-кода
+        await processing_msg.delete()  # удаляем сообщение "Обрабатываю..."
+        
+        # ✅ ДОБАВЛЯЕМ УВЕДОМЛЕНИЕ О НАЙДЕННОМ КЛИЕНТЕ
+        await update.message.reply_text("✅ Найден клиент по QR-коду")
+        await asyncio.sleep(0.5)
+        
         await process_customer_scan(update, context, customer_id)
 
     except Exception as e:
