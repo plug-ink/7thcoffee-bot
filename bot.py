@@ -9,22 +9,69 @@ import asyncio
 
 
 
+import random
+
+def get_random_user_emoji():
+    """Возвращает случайный эмодзи для отображения пользователя"""
+    user_emojis = [
+        "🧘‍♀️", "🤸‍♂️", "🛀", "🤾‍♀️", "🏄‍♂️", "🏂", "⛷", "🧖‍♀️", "🧌", "🕴",
+        "🧙‍♂️", "🧛‍♂️", "🎅", "👼", "👨‍🚀", "👩‍🏫", "🧏", "💁‍♂️", "👹", 
+        "🙊", "🙉", "🙈"
+    ]
+    return random.choice(user_emojis)
+
 def get_coffee_progress(current, total):
-    """Создает визуальный прогресс-бар из чашек кофе"""
-    # ЗАЩИТА: если total = 0, чтобы не было ошибки
+    """Создает визуальный прогресс-бар из случайного набора эмодзи"""
     if total <= 0:
         return "❌ Ошибка акции"
     
     filled = min(current, total)
     
+    # Случайный выбор стиля прогресс-бара
+    styles = [
+        # Стиль 1: ice
+        {
+            'filled': '🧋', 
+            'empty': '🧊', 
+            'gift': '🧊'
+        },
+        # Стиль 2: чёрный кофе
+        {
+            'filled': '☕', 
+            'empty': '🔳', 
+            'gift': '🔲'
+        },
+        # Стиль 3: геометри
+        {
+            'filled': '🟠', 
+            'empty': '⚪', 
+            'gift': '⬛'
+        },
+        # Стиль 4: стаканы
+        {
+            'filled': '🥤', 
+            'empty': '🔲', 
+            'gift': '🔳'
+        },
+        # Стиль 5: базовый
+        {
+            'filled': '☕', 
+            'empty': '▫', 
+            'gift': '🎁'
+        },
+    ]
+    
+    # Выбираем случайный стиль
+    style = random.choice(styles)
+    
     if filled >= total:
         # Все чашки заполнены - подарок активирован
-        return "☕" * total
+        return style['filled'] * total
     else:
         empty = total - 1 - filled  # клетки до подарка
-        progress = "☕" * filled     # Заполненные чашки
-        progress += "▫" * empty     # Пустые клетки
-        progress += "🎁"             # Подарочная чашка
+        progress = style['filled'] * filled     # Заполненные
+        progress += style['empty'] * empty      # Пустые клетки
+        progress += style['gift']               # Подарочная клетка
         return progress
 
 
@@ -275,10 +322,12 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Улучшенная карточка клиента
     if purchases >= required:
-        text = f"👤 {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\n🎉 Бесплатный напиток доступен!"
+        user_emoji = get_random_user_emoji()
+        text = f"{user_emoji} {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\n🎉 Бесплатный напиток!"
     else:
         remaining = required - purchases - 1
-        text = f"👤 {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\nДо подарка: {remaining} покупок"
+        user_emoji = get_random_user_emoji()
+        text = f"{user_emoji} {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\nЕщё {remaining}"
     
     # Сохраняем ID клиента для возможного повторного начисления через ✔ Начислить
     context.user_data['current_customer'] = customer_id
@@ -783,10 +832,11 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
         progress_bar = get_coffee_progress(purchases, required)
 
         if purchases >= required:
+            user_emoji = get_random_user_emoji()
             text = f"""
 📋 Найден пользователь:
 
-👤 {user_display_name}
+{user_emoji} {user_display_name}
 
 {progress_bar}
 
@@ -794,14 +844,15 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
             """
         else:
             remaining = required - purchases - 1
+            user_emoji = get_random_user_emoji()
             text = f"""
 📋 Найден пользователь:
 
-👤 {user_display_name}
+{user_emoji} {user_display_name}
 
 {progress_bar}
 
-До подарка: {remaining} покупок
+Ещё {remaining}
             """
         # ← ВСТАВИТЬ СЮДА ↓↓↓
         keyboard = [
@@ -1592,10 +1643,11 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
         progress_bar = get_coffee_progress(purchases, required)
 
         if purchases >= required:
+            user_emoji = get_random_user_emoji()
             text = f"""
 📋 Найден пользователь:
 
-👤 {user_display_name}
+{user_emoji} {user_display_name}
 
 {progress_bar}
 
@@ -1603,14 +1655,15 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
 """
         else:
             remaining = required - purchases - 1
+            user_emoji = get_random_user_emoji()
             text = f"""
 📋 Найден пользователь:
 
-👤 {user_display_name}
+{user_emoji} {user_display_name}
 
 {progress_bar}
 
-До подарка: {remaining} покупок
+Ещё {remaining}
 """
 
         keyboard = [
