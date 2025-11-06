@@ -327,7 +327,20 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         remaining = required - purchases - 1
         user_emoji = get_random_user_emoji()
-        text = f"{user_emoji} {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\nЕщё {remaining}"
+        if remaining == 0:
+            status_text = "Доступен 🎁"
+        else:
+            status_text = f"Ещё {remaining}" 
+    
+        text = f"""
+📋 Найден пользователь:
+
+{user_emoji} {user_display_name}
+
+{progress_bar}
+
+{status_text}
+"""
     
     # Сохраняем ID клиента для возможного повторного начисления через ✔ Начислить
     context.user_data['current_customer'] = customer_id
@@ -845,6 +858,11 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
         else:
             remaining = required - purchases - 1
             user_emoji = get_random_user_emoji()
+            if remaining == 0:
+                status_text = "Доступен 🎁"
+            else:
+                status_text = f"Ещё {remaining}"
+    
             text = f"""
 📋 Найден пользователь:
 
@@ -852,8 +870,8 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
 
 {progress_bar}
 
-Ещё {remaining}
-            """
+{status_text}
+"""
         # ← ВСТАВИТЬ СЮДА ↓↓↓
         keyboard = [
             [
@@ -1641,6 +1659,11 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
         else:
             remaining = required - purchases - 1
             user_emoji = get_random_user_emoji()
+            if remaining == 0:
+                status_text = "Доступен 🎁"
+            else:
+                status_text = f"Ещё {remaining}"
+    
             text = f"""
 📋 Найден пользователь:
 
@@ -1648,7 +1671,7 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
 
 {progress_bar}
 
-Ещё {remaining}
+{status_text}
 """
 
         keyboard = [
