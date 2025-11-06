@@ -214,6 +214,7 @@ async def show_client_main(update: Update, context: ContextTypes.DEFAULT_TYPE = 
 async def handle_client_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
+    print(f"🟡 DEBUG handle_client_mode: text='{text}', user_id={user_id}")
     
     if text == "📱 Мой QR":
         await send_qr_code(update, user_id)
@@ -977,11 +978,14 @@ async def show_user_status(update: Update, user_id: int):
     await update.message.reply_text(text)
 
 async def show_promotion_info(update: Update):
+    print(f"🔵 DEBUG show_promotion_info: вызвана")
     promotion = db.get_promotion()
     user = update.effective_user
     user_id = user.id
     purchases = db.get_user_stats(user_id)
     required = promotion[2] if promotion else 7
+
+    print(f"🔵 DEBUG: user_id={user_id}, purchases={purchases}, required={required}")
     
     # Формируем username для отображения
     username = f"{user.first_name or ''} {user.last_name or ''}".strip()
@@ -1002,6 +1006,8 @@ async def show_promotion_info(update: Update):
     
     # Второе сообщение - прогресс-бар с username
     progress_text = f"{username}\n\n{progress_bar}"
+
+    print(f"🔵 DEBUG: отправляем promotion_text и progress_text")
     
     # Отправляем сообщение об акции и сохраняем его для удаления
     promotion_msg = await update.message.reply_text(promotion_text)
@@ -1518,6 +1524,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             else:
                 await handle_admin_main(update, context)
+
+        elif role == 'client':  # ← ДОБАВЬ ЭТОТ БЛОК
+            if text == "📱 Мой QR":
+                await send_qr_code(update, user_id)
+                return
+            elif text == "🎁 Акции":
+                await show_promotion_info(update)
+                return
+            elif text == "📞 Привязать номер":
+                set_user_state(context, 'setting_phone')
+                await update.message.reply_text("🖇 Введите ваш номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
+                return
     
     elif state == 'client_mode':
         await handle_client_mode(update, context)
