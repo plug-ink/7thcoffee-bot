@@ -445,7 +445,21 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
         print(f"🟢 DEBUG: НЕ показываем надпись")
 
     # Отправляем сообщение баристе
+    # СНАЧАЛА стикер на 3 секунды
+    sticker_msg = await update.message.reply_sticker("CAACAgIAAxkBAAIXcmkJz75zJHyaWzadj8tpXsWv8PTsAAKgkwACe69JSNZ_88TxnRpuNgQ")
+
+# ПОТОМ сообщение с прогресс-баром
     await update.message.reply_text(text)
+
+# Удаляем стикер через 3 секунды
+    async def delete_sticker_later():
+        await asyncio.sleep(3)
+        try:
+            await sticker_msg.delete()
+        except Exception:
+            pass
+
+    asyncio.create_task(delete_sticker_later())
     
     # Анимация подарка на 7-й покупке (когда счетчик сбрасывается)
     if show_gift_animation:
