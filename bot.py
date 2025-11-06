@@ -6,7 +6,6 @@ from database import Database
 from qr_manager import generate_qr_code, parse_qr_data, read_qr_from_image
 from keyboards import *
 import asyncio
-from telegram import ReplyKeyboardRemove
 
 
 
@@ -38,11 +37,12 @@ async def notify_customer(bot, customer_id, new_count, required):
     username = user_info[0] if user_info and user_info[0] else "Не указан"
     first_name = user_info[1] if user_info and user_info[1] else ""
     last_name = user_info[2] if user_info and user_info[2] else ""
-    
-    user_display_name = f"@{username}" if username != "Не указан" else f"{first_name} {last_name}".strip()
+
+# ПРИОРИТЕТ: Имя Фамилия > username > Гость
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    user_display_name = f"{first_name} {clean_last_name}".strip()
     if not user_display_name:
-        user_display_name = "Гость"
-    
+        user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
     # ИСПРАВЛЕНИЕ: Не запрашиваем purchases_count повторно, используем new_count
     # Проверяем, была ли это 6-я покупка (перед подарком)
     was_sixth_purchase = (new_count == required - 1)  # 6 покупок при required=7
@@ -262,9 +262,10 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     last_name = user_info[2] if user_info and user_info[2] else ""
     phone = user_info[3] if user_info and user_info[3] else "Не указан"
     
-    user_display_name = f"@{username}" if username != "Не указан" else f"{first_name} {last_name}".strip()
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    user_display_name = f"{first_name} {clean_last_name}".strip()
     if not user_display_name:
-        user_display_name = "Гость"
+        user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
     
     promotion = db.get_promotion()
     required = promotion[2] if promotion else 7
@@ -323,9 +324,11 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     first_name = user_info[1] if user_info and user_info[1] else ""
     last_name = user_info[2] if user_info and user_info[2] else ""
 
-    user_display_name = f"@{username}" if username != "Не указан" else f"{first_name} {last_name}".strip()
+# ПРИОРИТЕТ: Имя Фамилия > username > Гость
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    user_display_name = f"{first_name} {clean_last_name}".strip()
     if not user_display_name:
-        user_display_name = "Гость"
+        user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
 
     # Надпись показываем когда было 5 покупок (стало 6)
     show_gift_message = (current_purchases == required - 2)  # 5 покупок при required=7
@@ -389,9 +392,15 @@ async def handle_admin_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📒 Посетители":
         set_user_state(context, 'admin_customers')
         await show_all_customers(update)
-    elif text == "📣 Рассылка":  # ← ДОБАВИТЬ ЭТО
+    elif text == "📣 Рассылка":  # ← ИЗМЕНИТЕ ЭТОТ БЛОК
         set_user_state(context, 'broadcast_message')
-        await update.message.reply_text("✍ Введите текст для рассылки (!c, !b):")
+        # НЕ УБИРАЕМ КЛАВИАТУРУ, просто меняем состояние
+        await update.message.reply_text(
+            "✍ Введите текст для рассылки (!c, !b):\n\n"
+            "!c - только клиентам\n"
+            "!b - только баристам\n"
+            "без префикса - всем пользователям"
+        )
     elif text == "⚙️ Опции":
         set_user_state(context, 'admin_settings')
         await show_admin_settings(update)
@@ -430,8 +439,17 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
     print(f"💾 DEBUG: Сохранили broadcast_text: '{broadcast_text}'")
     
     # ПРЕДПРОСМОТР с инлайн кнопками
-    preview_text = f"{broadcast_text}"
-    
+# ПРЕДПРОСМОТР с инлайн кнопками
+    target_info = ""
+    if broadcast_text.startswith('!c '):
+        target_info = " (только клиентам)"
+    elif broadcast_text.startswith('!b '):
+        target_info = " (только баристам)"
+    else:
+        target_info = " (всем пользователям)"
+
+    preview_text = f"📣 Предпросмотр рассылки{target_info}:\n\n{broadcast_text}"
+
     keyboard = [
         [
             InlineKeyboardButton("✅ Отправить", callback_data="broadcast_send"),
@@ -473,6 +491,7 @@ async def handle_broadcast_buttons(update: Update, context: ContextTypes.DEFAULT
     elif data == "broadcast_cancel":
         await query.edit_message_text("❌ Рассылка отменена")
         set_user_state(context, 'main')
+        await show_admin_main(update)
     elif data == "broadcast_delete":
         await delete_broadcast_from_users(update, context)
 
@@ -572,6 +591,8 @@ async def send_broadcast_to_users(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text("❌ Не удалось отправить ни одному пользователю")
     
     set_user_state(context, 'main')
+    await show_admin_main(update)
+
 
 async def delete_broadcast_from_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Удаляет рассылку у всех пользователей"""
@@ -630,7 +651,7 @@ async def show_all_customers(update: Update):
     if not users:
         text = "📂 Клиентов пока нет."
     else:
-        text = "📒 Список пользователей:\n\n"
+        text = "📖 Список пользователей:\n\n"
         for u in users:
             user_id, username, first_name, last_name, purchases = u
             print(f"[DEBUG] user_id={user_id}, username='{username}', first_name='{first_name}', last_name='{last_name}'")
@@ -751,20 +772,37 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
         required = promotion[2] if promotion else 7
         
         # Формируем красивое имя
-        user_display_name = f"@{username}" if username else f"{first_name} {last_name}".strip()
+# Приоритет: Имя Фамилия > username > Гость
+        clean_last_name = last_name if last_name and last_name != "None" else ""
+        user_display_name = f"{first_name} {clean_last_name}".strip()
         if not user_display_name:
-            user_display_name = "Гость"
+            user_display_name = f"@{username}" if username else "Гость"
         
-        text = f"""
+        # Создаем прогресс-бар
+        # Создаем прогресс-бар
+        progress_bar = get_coffee_progress(purchases, required)
+
+        if purchases >= required:
+            text = f"""
 📋 Найден пользователь:
 
 👤 {user_display_name}
-📊 Покупок: {purchases}/{required}
-🎯 До бесплатного напитка: {max(0, required - purchases)}
 
-{'🎉 Бесплатный напиток доступен!' if purchases >= required else 'Продолжайте в том же духе!'}
-        """
-        
+{progress_bar}
+
+🎉 Бесплатный напиток доступен!
+            """
+        else:
+            remaining = required - purchases - 1
+            text = f"""
+📋 Найден пользователь:
+
+👤 {user_display_name}
+
+{progress_bar}
+
+До подарка: {remaining} покупок
+            """
         # ← ВСТАВИТЬ СЮДА ↓↓↓
         keyboard = [
             [
@@ -838,9 +876,9 @@ async def show_promotion_info(update: Update):
     required = promotion[2] if promotion else 7
     
     # Формируем username для отображения
-    username = f"@{user.username}" if user.username else f"{user.first_name or ''} {user.last_name or ''}".strip()
+    username = f"{user.first_name or ''} {user.last_name or ''}".strip()
     if not username:
-        username = "Гость"
+        username = f"@{user.username}" if user.username else "Гость"
     
     # Создаем прогресс-бар
     progress_bar = get_coffee_progress(purchases, required)
@@ -1096,6 +1134,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     elif state == 'broadcast_message':
+    
+        print(f"🟢 DEBUG: Передаем в handle_broadcast_message: '{text}'")
         await handle_broadcast_message(update, context)
         return
     
@@ -1370,15 +1410,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 set_user_state(context, 'admin_customers')
                 await show_all_customers(update)
                 return
-            elif text == "📣 Рассылка":  # ← ЭТА СТРОКА ДОЛЖНА БЫТЬ
+            elif text == "📣 Рассылка":
                 print(f"🟡 DEBUG: Устанавливаем состояние broadcast_message")
                 set_user_state(context, 'broadcast_message')
-                current_state = get_user_state(context)
-                print(f"🟡 DEBUG: Новое состояние: {current_state}")
-                # УБИРАЕМ КЛАВИАТУРУ чтобы Telegram отправлял сообщения
                 await update.message.reply_text(
-                    "✍ Введите текст для рассылки (!c, !b):",
-                    reply_markup=ReplyKeyboardRemove()  # ← ДОБАВЬ ЭТУ СТРОКУ
+                    "✍ Введите текст для рассылки (!c, !b):\n\n"
+                    "!c - только клиентам\n"
+                    "!b - только баристам\n"
+                    "без префикса - всем пользователям\n\n"
+                    "Или нажмите '🔙 Назад' для отмены"
                 )
                 return
             elif text == "⚙️ Опции":
@@ -1541,8 +1581,37 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
         promotion = db.get_promotion()
         required = promotion[2] if promotion else 7
 
-        user_display_name = f"@{username}" if username else f"{first_name} {last_name}".strip() or "Гость"
-        text = f"📋 Найден пользователь:\n\n👤 {user_display_name}\n📊 Покупок: {purchases}/{required}\n🎯 До бесплатного: {max(0, required - purchases)}\n{'🎉 Бесплатный напиток доступен!' if purchases >= required else 'Продолжайте в том же духе!'}"
+        # Приоритет: Имя Фамилия > username > Гость
+        # Обрабатываем случай когда last_name = "None" (строка)
+        clean_last_name = last_name if last_name and last_name != "None" else ""
+        user_display_name = f"{first_name} {clean_last_name}".strip()
+        if not user_display_name:
+            user_display_name = f"@{username}" if username else "Гость"
+
+        # Создаем прогресс-бар
+        progress_bar = get_coffee_progress(purchases, required)
+
+        if purchases >= required:
+            text = f"""
+📋 Найден пользователь:
+
+👤 {user_display_name}
+
+{progress_bar}
+
+🎉 Бесплатный напиток доступен!
+"""
+        else:
+            remaining = required - purchases - 1
+            text = f"""
+📋 Найден пользователь:
+
+👤 {user_display_name}
+
+{progress_bar}
+
+До подарка: {remaining} покупок
+"""
 
         keyboard = [
             [KeyboardButton("➕ Начислить покупку")],
