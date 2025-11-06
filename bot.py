@@ -182,7 +182,7 @@ async def show_barista_main(update: Update):
     user = update.effective_user
     role = get_user_role(user.id, user.username)
     
-    text = "🐾 Привет бариста! Отправь QR или номер (без '8')"
+    text = "🐾 Привет бариста! Отправь QR или номер"
     
     if role == 'admin':
         if update.message:
@@ -240,7 +240,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка обработки: {str(e)}")
 
 async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
-    """Обработка сканирования клиента с улучшенным уведомлением"""
+    """Обработка сканирования клиента с автоматическим обновлением клавиатуры"""
     user_id = update.effective_user.id
     username = update.effective_user.username
     state = get_user_state(context)
@@ -278,15 +278,26 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
         remaining = required - purchases - 1
         text = f"👤 {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\nДо подарка: {remaining} покупок"
     
-    # Сохраняем ID клиента для возможного повторного начисления через ☕+1
+    # Сохраняем ID клиента для возможного повторного начисления через ✔ Начислить
     context.user_data['current_customer'] = customer_id
     
-    # Отправляем сообщение с информацией о клиенте
-    await update.message.reply_text(text)
+    # ✅ АВТОМАТИЧЕСКИ ОБНОВЛЯЕМ КЛАВИАТУРУ
+    keyboard = [
+        [KeyboardButton("✔ Начислить")],
+        [KeyboardButton("📲 Добавить номер")],
+        [KeyboardButton("🧾 Инфо")]
+    ]
     
-    # Бариста теперь может нажать ☕+1 для начисления покупки
+    if role == 'admin':
+        keyboard.append([KeyboardButton("🔙 Назад")])
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    # Отправляем сообщение с информацией о клиенте и ОБНОВЛЕННОЙ клавиатурой
+    await update.message.reply_text(text, reply_markup=reply_markup)    
+    # Бариста теперь может нажать ✔ Начислить для начисления покупки
 async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
-    """Обработка начисления покупки по кнопке ☕+1"""
+    """Обработка начисления покупки по кнопке ✔ Начислить"""
     print(f"🔴 DEBUG process_coffee_purchase: начали, customer_id={customer_id}")
     user_id = update.effective_user.id
     
@@ -892,7 +903,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             set_user_state(context, 'barista_mode')
             await show_barista_main(update)
             return
-        elif text == "☕+1":
+        elif text == "✔ Начислить":
             set_user_state(context, 'barista_mode')
             customer_id = context.user_data.get('current_customer')
             if customer_id:
@@ -1047,7 +1058,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif state == 'barista_mode':
         if text == "🧾 Инфо":
             await show_barista_promotion_info(update)
-        elif text == "☕+1":
+        elif text == "✔ Начислить":
             print(f"🟡 DEBUG: Обрабатываем +1, текущее состояние: {state}")
             customer_id = context.user_data.get('current_customer')
             if customer_id:
@@ -1387,7 +1398,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"⚠️ DEBUG: Неизвестная команда '{text}', состояние: {state}")
         
         # Обрабатываем кнопки которые попалают сюда
-        if text == "☕+1" and state == 'barista_mode':
+        if text == "✔ Начислить" and state == 'barista_mode':
             customer_id = context.user_data.get('current_customer')
             if customer_id:
                 await process_coffee_purchase(update, context, customer_id)

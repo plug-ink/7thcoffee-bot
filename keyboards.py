@@ -24,7 +24,7 @@ def get_client_keyboard_with_back():
 def get_barista_keyboard():
     """Клавиатура баристы с кнопкой +1 и добавлением клиента"""
     keyboard = [
-        [KeyboardButton("☕+1")],
+        [KeyboardButton("✔ Начислить")],
         [KeyboardButton("📲 Добавить номер")],
         [KeyboardButton("🧾 Инфо")]
     ]
@@ -33,7 +33,7 @@ def get_barista_keyboard():
 def get_barista_keyboard_with_back():
     """Клавиатура баристы с кнопкой +1 (для админа)"""
     keyboard = [
-        [KeyboardButton("☕+1")],
+        [KeyboardButton("✔ Начислить")],
         [KeyboardButton("📲 Добавить номер")],
         [KeyboardButton("🧾 Инфо")],
         [KeyboardButton("🔙 Назад")]
