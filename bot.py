@@ -93,20 +93,30 @@ async def notify_customer(bot, customer_id, new_count, required):
         user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
     # ИСПРАВЛЕНИЕ: Не запрашиваем purchases_count повторно, используем new_count
     # Проверяем, была ли это 6-я покупка (перед подарком)
+# Проверяем, была ли это 6-я покупка (перед подарком)
     was_sixth_purchase = (new_count == required - 1)  # 6 покупок при required=7
-    
-    # Прогресс-бар после начисления
-    progress_bar = get_coffee_progress(new_count, required)
+
+# Проверяем, была ли это 7-я покупка (подарок)
+    was_seventh_purchase = (new_count == 0)  # сброс после 7-й покупки
+
+# Прогресс-бар после начисления
+    if was_seventh_purchase:
+    # Показываем полный прогресс-бар для 7-й покупки
+        progress_bar = get_coffee_progress(required, required)  # 7 из 7
+    else:
+        progress_bar = get_coffee_progress(new_count, required)
     
     try:
         # ОТПРАВЛЯЕМ СТИКЕР И СООБЩЕНИЕ ОДНОВРЕМЕННО
         sticker_msg = await bot.send_sticker(customer_id, "CAACAgIAAxkBAAIXcmkJz75zJHyaWzadj8tpXsWv8PTsAAKgkwACe69JSNZ_88TxnRpuNgQ")
         
         # Сразу отправляем сообщение с прогресс-баром
-        if was_sixth_purchase:
-            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nСледующий напиток в подарок"
+        if was_seventh_purchase:
+            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nНапиток в подарок 🎁!"
+        elif was_sixth_purchase:
+            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}"
+            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️"
         
         await bot.send_message(customer_id, message)
         
@@ -122,11 +132,12 @@ async def notify_customer(bot, customer_id, new_count, required):
     
     except Exception as e:
         print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
-        if was_sixth_purchase:
-            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nСледующий напиток в подарок"
+        if was_seventh_purchase:
+            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nНапиток в подарок 🎁"
+        elif was_sixth_purchase:
+            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}"
-        
+            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️"
         await bot.send_message(customer_id, message)
         
 async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -436,13 +447,9 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     # Формируем сообщение для баристы
     # Формируем сообщение для баристы
     if show_gift_message:
-    # Это была 5-я покупка (стало 6) - показываем надпись
-        text = f"{user_emoji} {user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nСледующий напиток в подарок"
-        print(f"🟢 DEBUG: Показываем надпись 'Следующий напиток в подарок'")
-    
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nСледующий напиток в подарок"
     else:
-    # Все остальные случаи - без надписи
-        text = f"{user_emoji} {user_display_name}\t\t☑️ + 1\n\n{progress_bar}"
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        + 1 ☑️"
         print(f"🟢 DEBUG: НЕ показываем надпись")
 
     # Отправляем сообщение баристе
@@ -466,7 +473,7 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     if show_gift_animation:
         print(f"🎁 DEBUG: Показываем анимацию подарка (7-я покупка)")
         gift_msg = await update.message.reply_text("🎁")
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(5)
         try:
             await gift_msg.delete()
         except:
