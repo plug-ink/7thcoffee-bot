@@ -501,7 +501,7 @@ async def handle_admin_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_state(context, 'broadcast_message')
         # НЕ УБИРАЕМ КЛАВИАТУРУ, просто меняем состояние
         await update.message.reply_text(
-            "✍ Введите текст для рассылки (!c, !b):\n\n"
+            "✍ Введите текст для рассылки:\n\n"
             "!c - только клиентам\n"
             "!b - только баристам\n"
             "без префикса - всем пользователям"
