@@ -172,7 +172,7 @@ async def handle_client_mode(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await show_promotion_info(update)
     elif text == "📞 Привязать номер":
         set_user_state(context, 'setting_phone')
-        await update.message.reply_text("🖇 Введите ваш номер телефона (без 8) и имя через пробел\n\nПример: 9001234567 Иван")
+        await update.message.reply_text("🖇 Введите ваш номер телефона (без '8') и имя через пробел\nПример👇\n\n9993332211 Иван")
     elif text == "🔙 Назад" and is_admin(user_id):
         set_user_state(context, 'main')
         await show_admin_main(update)
@@ -182,7 +182,7 @@ async def show_barista_main(update: Update):
     user = update.effective_user
     role = get_user_role(user.id, user.username)
     
-    text = "🐾 Привет бариста!\n\nОтправь QR или номер без 8"
+    text = "🐾 Привет бариста! Отправь QR или номер (без '8')"
     
     if role == 'admin':
         if update.message:
@@ -818,14 +818,13 @@ async def show_promotion_info(update: Update):
 async def show_barista_promotion_info(update: Update):
     promotion = db.get_promotion()
     
-    # Первое сообщение - информация об акции (как у клиента)
-    if promotion:
-        promotion_text = (
-            f"🎁 {promotion[1]}\n\n"
-            f"{promotion[5] if promotion[3] else 'Покажите QR-код при каждой покупке'}"
-        )
+    # Добавляем проверку на существование акции и корректность данных
+    if promotion and len(promotion) >= 4:  # проверяем что есть достаточно элементов
+        promotion_name = promotion[1] if promotion[1] else "Каждый 7-й напиток бесплатно"
+        promotion_description = promotion[3] if promotion[3] else "Покажите QR-код при каждой покупке"
+        promotion_text = f"🎁 {promotion_name}\n\n{promotion_description}"
     else:
-        promotion_text = "Акция ещё не настроена"
+        promotion_text = "🎁 Акция: Каждый 7-й напиток бесплатно!\n\nПокажите QR-код при каждой покупке"
     
     # Второе сообщение - инструкция для баристы (остается навсегда)
     instruction_text = """
@@ -848,9 +847,9 @@ async def show_barista_promotion_info(update: Update):
     # Отправляем инструкцию - она остается навсегда
     await update.message.reply_text(instruction_text)
     
-    # Удаляем только сообщение об акции через 3 секунды (как у клиента)
+    # Удаляем только сообщение об акции через 5 секунд
     async def delete_promotion_message():
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)
         try:
             await promotion_msg.delete()
         except Exception:
@@ -858,7 +857,6 @@ async def show_barista_promotion_info(update: Update):
     
     # Запускаем удаление только сообщения с акцией
     asyncio.create_task(delete_promotion_message())
-
 # ================== ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ==================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_user_state(context)
@@ -868,12 +866,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     role = get_user_role(user_id, username)    # Определяем роль пользователя
     print(f"🔴 DEBUG ВХОД: text='{text}', state='{state}', role='{role}'")
-    
+
+    if text == "🔙 Назад" and state == 'barista_mode':
+        set_user_state(context, 'admin_settings')
+        await show_admin_settings(update)
+        return  
         # Обработка кнопки "Назад" в режиме баристы (для админа)
 
     if text == "📲 Добавить номер" and state == 'barista_mode':
         set_user_state(context, 'adding_customer')
-        await update.message.reply_text("📝 Введите номер телефона и имя через пробел:\n\nПример: 9993334444 Иван")
+        await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇:\n\n9993332211 Иван")
         return
     
     print(f"📨 Сообщение: '{text}', состояние: {state}, роль: {role}")
@@ -890,14 +892,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             set_user_state(context, 'barista_mode')
             await show_barista_main(update)
             return
-        elif text == "📲 Добавить номер":  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+        elif text == "☕+1":
+            set_user_state(context, 'barista_mode')
+            customer_id = context.user_data.get('current_customer')
+            if customer_id:
+                await process_coffee_purchase(update, context, customer_id)
+            else:
+                await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
+            return
+        elif text == "🧾 Инфо":
+            set_user_state(context, 'barista_mode')
+            await show_barista_promotion_info(update)  # ← УБРАЛ await show_barista_main(update)
+            return
+        elif text == "📲 Добавить номер":
             # Игнорируем повторное нажатие той же кнопки
             return
-        elif text in ["☕+1", "🧾 Инфо"]:
-            # Игнорируем другие кнопки баристы
-            await update.message.reply_text("❌ Завершите ввод номера или нажмите '🔙 Назад'")
-            return
         
+        # ... остальной код без изменений
+        
+        # Только потом проверяем ввод номера
         if " " in text:
             try:
                 parts = text.split(" ", 1)
@@ -933,7 +946,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9993334444 Иван\n\nИли нажмите '🔙 Назад' для отмены")
         return
-        # Обработка меню бариста для админа
+            # Обработка меню бариста для админа
     if state == 'admin_barista':
         if text == "➕ Добавить":
             set_user_state(context, 'adding_barista')
@@ -1219,7 +1232,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # НЕ вызываем set_user_state и show_customer_management
     # Обработка кнопки "Назад" в разных режимах
     if text == "🔙 Назад":
-
+        if state == 'barista_mode':  # ← ДОБАВЬТЕ ЭТУ СТРОКУ ПЕРВОЙ
+            set_user_state(context, 'admin_settings')
+            await show_admin_settings(update)
+            return
         if state in ['client_mode', 'barista_mode']:
             set_user_state(context, 'main')
             await show_admin_main(update)
@@ -1295,6 +1311,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_client_mode(update, context)
 
     elif state == 'setting_phone':
+        # ПРОВЕРЯЕМ СПЕЦИАЛЬНЫЕ КОМАНДЫ ПЕРВЫМИ
+        if text == "🔙 Назад":
+            set_user_state(context, 'client_mode')
+            await show_client_main(update, context)
+            return
+        elif text == "📱 Мой QR":
+            set_user_state(context, 'client_mode')
+            await send_qr_code(update, user_id)
+            return
+        elif text == "🎁 Акции":
+            set_user_state(context, 'client_mode')
+            await show_promotion_info(update)
+            return
+        
+        # Только потом проверяем ввод номера
         if " " in text:
             try:
                 parts = text.split(" ", 1)
@@ -1304,7 +1335,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if phone.isdigit() and len(phone) == 10:
                     user_id = update.effective_user.id
                 
-                # Обновляем имя и номер
+                    # Обновляем имя и номер
                     cursor = db.conn.cursor()
                     cursor.execute('UPDATE users SET first_name = ?, phone = ? WHERE user_id = ?', (name, phone, user_id))
                     db.conn.commit()
@@ -1318,8 +1349,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except (ValueError, IndexError):
                 await update.message.reply_text("❌ Формат: номер имя\nПример: 9001234567 Иван")
         else:
-            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9993334444 Иван")
-    
+            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9001234567 Иван\n\nИли нажмите '🔙 Назад' для отмены")
+
+
     elif state == 'admin_barista':
         await handle_admin_barista_management(update, context)
     
@@ -1354,23 +1386,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Если неизвестная команда, просто игнорируем или показываем текущее меню
         print(f"⚠️ DEBUG: Неизвестная команда '{text}', состояние: {state}")
         
-        # Обрабатываем кнопки которые попали сюда
+        # Обрабатываем кнопки которые попалают сюда
         if text == "☕+1" and state == 'barista_mode':
             customer_id = context.user_data.get('current_customer')
             if customer_id:
                 await process_coffee_purchase(update, context, customer_id)
             else:
                 await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
-        elif text == "📲 Добавить номер" and state == 'barista_mode':  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+        elif text == "🧾 Инфо" and state == 'barista_mode':  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+            await show_barista_promotion_info(update)
+        elif text == "📲 Добавить номер" and state == 'barista_mode':
             set_user_state(context, 'adding_customer')
-            await update.message.reply_text("📝 Введите номер телефона и имя через пробел:\n\nПример: 9993334444 Иван")
-        # Вместо перезапуска показываем текущее меню
-        elif state == 'barista_mode':
-            await show_barista_main(update)
-        elif state == 'client_mode':
-            await show_client_main(update, context)
-        elif state == 'main' and role == 'admin':
-            await show_admin_main(update)
+            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇:\n\n9993332211 Иван")
+        # ... остальное без изменений
         # else - просто игнорируем неизвестное сообщение
 
 async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
