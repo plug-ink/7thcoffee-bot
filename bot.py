@@ -221,7 +221,7 @@ async def handle_client_mode(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await show_promotion_info(update)
     elif text == "📞 Привязать номер":
         set_user_state(context, 'setting_phone')
-        await update.message.reply_text("🖇 Введите ваш номер телефона (без '8') и имя через пробел\nПример👇\n\n9993332211 Иван")
+        await update.message.reply_text("🖇 Введите ваш номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
     elif text == "🔙 Назад" and is_admin(user_id):
         set_user_state(context, 'main')
         await show_admin_main(update)
@@ -1065,7 +1065,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if role == 'barista' and state == 'main':
         if text == "📲 Добавить номер":
             set_user_state(context, 'adding_customer')
-            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9993332211 Иван")
+            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
             return
         elif text == "✔ Начислить":
             customer_id = context.user_data.get('current_customer')
@@ -1093,7 +1093,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📲 Добавить номер" and state == 'barista_mode':
         set_user_state(context, 'adding_customer')
-        await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9993332211 Иван")
+        await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
         return
     
     print(f"📨 Сообщение: '{text}', состояние: {state}, роль: {role}")
@@ -1158,9 +1158,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ Номер должен быть 10 цифр")
                     
             except (ValueError, IndexError):
-                await update.message.reply_text("❌ Формат: номер имя\nПример: 9993334444 Иван")
+                await update.message.reply_text("❌ Формат: номер имя\nПример: 9996664422 Саша")
         else:
-            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9993334444 Иван\n\nИли нажмите '🔙 Назад' для отмены")
+            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9996664422 Саша\n\nИли нажмите '🔙 Назад' для отмены")
         return
             # Обработка меню бариста для админа
     if state == 'admin_barista':
@@ -1276,7 +1276,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif text == "📲 Добавить номер":  # ← ДОБАВЬ ЭТУ СТРОКУ
             set_user_state(context, 'adding_customer')
-            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9993332211 Иван")
+            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
             return
         elif " " in text:
             try:
@@ -1310,7 +1310,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ Номер должен быть 10 цифр")
                     
             except (ValueError, IndexError):
-                await update.message.reply_text("❌ Формат: номер имя\nПример: 9001234567 Иван")
+                await update.message.reply_text("❌ Формат: номер имя\nПример: 9996664422 Саша")
         elif text.isdigit() and len(text) == 10:
             customer_id = db.find_user_by_phone(text)
             if customer_id:
@@ -1318,9 +1318,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await asyncio.sleep(0.5)
                 await process_customer_scan(update, context, customer_id)
             else:
-                await update.message.reply_text(f"❌ Клиент с номером {text} не найден\n\nИспользуйте формат: 9993332211 Иван")
+                await update.message.reply_text(f"❌ Клиент с номером {text} не найден\n\nИспользуйте формат: 9996664422 Саша")
         else:
-            await update.message.reply_text("📸 Отправьте фото QR или введите номер имя\nПример: 9993332211 Иван")
+            await update.message.reply_text("📸 Отправьте фото QR или введите номер имя\nПример: 9996664422 Саша")
 
     elif state == 'barista_action':
         if text == "✔ Засчитать покупку":
@@ -1506,11 +1506,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"🟡 DEBUG: Устанавливаем состояние broadcast_message")
                 set_user_state(context, 'broadcast_message')
                 await update.message.reply_text(
-                    "✍ Введите текст для рассылки (!c, !b):\n\n"
-                    "!c - только клиентам\n"
-                    "!b - только баристам\n"
+                    "✍ Введите текст для рассылки:\n\n"
+                    "!c только клиентам\n"
+                    "!b только баристам\n"
                     "без префикса - всем пользователям\n\n"
-                    "Или нажмите '🔙 Назад' для отмены"
                 )
                 return
             elif text == "⚙️ Опции":
@@ -1560,9 +1559,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ Номер должен быть 10 цифр")
                 
             except (ValueError, IndexError):
-                await update.message.reply_text("❌ Формат: номер имя\nПример: 9001234567 Иван")
+                await update.message.reply_text("❌ Формат: номер имя\nПример: 9996664422 Саша")
         else:
-            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9001234567 Иван\n\nИли нажмите '🔙 Назад' для отмены")
+            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9996664422 Саша\n\nИли нажмите '🔙 Назад' для отмены")
 
 
     elif state == 'admin_barista':
@@ -1611,7 +1610,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif text == "📲 Добавить номер" and (state == 'barista_mode' or (state == 'main' and role == 'barista')):  # ← ИЗМЕНИ ЭТУ СТРОКУ
             set_user_state(context, 'adding_customer')
-            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9993332211 Иван")
+            await update.message.reply_text("💬 Введите номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
         # Вместо перезапуска показываем текущее меню
         elif state == 'barista_mode':
             await show_barista_main(update)
