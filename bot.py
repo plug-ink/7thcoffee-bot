@@ -20,7 +20,7 @@ def get_random_user_emoji():
     ]
     return random.choice(user_emojis)
 
-def get_coffee_progress(current, total):
+def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=None
     """Создает визуальный прогресс-бар из случайного набора эмодзи"""
     if total <= 0:
         return "❌ Ошибка акции"
@@ -61,8 +61,9 @@ def get_coffee_progress(current, total):
         },
     ]
     
-    # Выбираем случайный стиль
-    style = random.choice(styles)
+    # Выбираем случайный стиль ЕСЛИ не передан
+    if style is None:
+        style = random.choice(styles)
     
     if filled >= total:
         # Все чашки заполнены - подарок активирован
@@ -103,9 +104,9 @@ async def notify_customer(bot, customer_id, new_count, required):
         
         # Сразу отправляем сообщение с прогресс-баром
         if was_sixth_purchase:
-            message = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nСледующий напиток в подарок"
+            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name} +1 ☑️\n\n{progress_bar}"
+            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}"
         
         await bot.send_message(customer_id, message)
         
@@ -122,9 +123,9 @@ async def notify_customer(bot, customer_id, new_count, required):
     except Exception as e:
         print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
         if was_sixth_purchase:
-            message = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nСледующий напиток в подарок"
+            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name} +1 ☑️\n\n{progress_bar}"
+            message = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}"
         
         await bot.send_message(customer_id, message)
         
@@ -293,6 +294,25 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     username = update.effective_user.username
     state = get_user_state(context)
     role = get_user_role(user_id, username)
+
+    # СОЗДАЕМ НОВЫЕ настройки для каждого клиента
+    styles = [
+        {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
+        {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
+        {'filled': '🟠', 'empty': '⚪', 'gift': '⬛'},
+        {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
+        {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
+    ]
+
+# ВСЕГДА создаем новые настройки для нового клиента
+    context.user_data['customer_style'] = random.choice(styles)
+    context.user_data['customer_emoji'] = get_random_user_emoji()
+
+    style = context.user_data['customer_style']
+    user_emoji = context.user_data['customer_emoji']
+    
+    style = context.user_data['customer_style']
+    user_emoji = context.user_data['customer_emoji']
     
     # Получаем данные клиента
     purchases = db.get_user_stats(customer_id)
@@ -318,23 +338,21 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     required = promotion[2] if promotion else 7
 
     # Создаем визуальный прогресс-бар
-    progress_bar = get_coffee_progress(purchases, required)
+    progress_bar = get_coffee_progress(purchases, required, style)
 
     # Улучшенная карточка клиента
     if purchases >= required:
-        user_emoji = get_random_user_emoji()
+
         text = f"{user_emoji} {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\n🎉 Бесплатный напиток!"
     else:
         remaining = required - purchases - 1
-        user_emoji = get_random_user_emoji()
+        
         if remaining == 0:
             status_text = "Доступен 🎁"
         else:
             status_text = f"Ещё {remaining}" 
     
         text = f"""
-📋 Найден пользователь:
-
 {user_emoji} {user_display_name}
 
 {progress_bar}
@@ -363,6 +381,16 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
 async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
     """Обработка начисления покупки по кнопке ✔ Начислить"""
     print(f"🔴 DEBUG process_coffee_purchase: начали, customer_id={customer_id}")
+    styles = [
+        {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
+        {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
+        {'filled': '🟠', 'empty': '⚪', 'gift': '⬛'},
+        {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
+        {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
+    ]
+    
+    style = context.user_data.get('customer_style', random.choice(styles))
+    user_emoji = context.user_data.get('customer_emoji', get_random_user_emoji())
     user_id = update.effective_user.id
     
     # Получаем текущее количество покупок ДО начисления
@@ -402,17 +430,18 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     print(f"🟡 DEBUG: show_gift_animation={show_gift_animation} (current_purchases={current_purchases} == required-1={required-1})")
 
     # Прогресс-бар
-    progress_bar = get_coffee_progress(new_count, required)
+    progress_bar = get_coffee_progress(new_count, required, style)
     
     # Формируем сообщение для баристы
+    # Формируем сообщение для баристы
     if show_gift_message:
-        # Это была 5-я покупка (стало 6) - показываем надпись
-        text = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nСледующий напиток в подарок"
+    # Это была 5-я покупка (стало 6) - показываем надпись
+        text = f"{user_emoji} {user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nСледующий напиток в подарок"
         print(f"🟢 DEBUG: Показываем надпись 'Следующий напиток в подарок'")
-        
+    
     else:
-        # Все остальные случаи - без надписи
-        text = f"{user_display_name} +1 ☑️\n\n{progress_bar}"
+    # Все остальные случаи - без надписи
+        text = f"{user_emoji} {user_display_name}\t\t☑️ + 1\n\n{progress_bar}"
         print(f"🟢 DEBUG: НЕ показываем надпись")
 
     # Отправляем сообщение баристе
@@ -847,8 +876,6 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
         if purchases >= required:
             user_emoji = get_random_user_emoji()
             text = f"""
-📋 Найден пользователь:
-
 {user_emoji} {user_display_name}
 
 {progress_bar}
@@ -864,8 +891,6 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
                 status_text = f"Ещё {remaining}"
     
             text = f"""
-📋 Найден пользователь:
-
 {user_emoji} {user_display_name}
 
 {progress_bar}
@@ -1308,11 +1333,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 progress_bar = get_coffee_progress(new_count, required)
                 if new_count >= required:
-                    text = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\n🎉 Бесплатный напиток активирован!"
+                    text = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\n🎉 Бесплатный напиток активирован!"
                 else:
                     # ИСПРАВЛЕНИЕ: правильный расчет до бесплатного напитка
                     remaining_for_free = max(0, required - new_count - 1)
-                    text = f"{user_display_name} +1 ☑️\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
+                    text = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
             
                 # ЗАМЕНИТЬ СООБЩЕНИЕ вместо создания нового
                 customer_card_message_id = context.user_data.get('customer_card_message_id')
@@ -1648,8 +1673,6 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
         if purchases >= required:
             user_emoji = get_random_user_emoji()
             text = f"""
-📋 Найден пользователь:
-
 {user_emoji} {user_display_name}
 
 {progress_bar}
@@ -1665,8 +1688,6 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
                 status_text = f"Ещё {remaining}"
     
             text = f"""
-📋 Найден пользователь:
-
 {user_emoji} {user_display_name}
 
 {progress_bar}
