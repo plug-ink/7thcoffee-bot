@@ -43,9 +43,9 @@ def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=N
         },
         # Стиль 3: геометри
         {
-            'filled': '🟨', 
+            'filled': '🟤', 
             'empty': '⚪', 
-            'gift': '⬛'
+            'gift': '⚫'
         },
         # Стиль 4: стаканы
         {
