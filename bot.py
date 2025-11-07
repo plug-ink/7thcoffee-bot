@@ -43,7 +43,7 @@ def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=N
         },
         # Стиль 3: геометри
         {
-            'filled': '🟠', 
+            'filled': '🟨', 
             'empty': '⚪', 
             'gift': '⬛'
         },
@@ -58,6 +58,21 @@ def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=N
             'filled': '☕', 
             'empty': '▫', 
             'gift': '🎁'
+        },
+                {
+            'filled': '🍜', 
+            'empty': '◾', 
+            'gift': '🈹'
+        },
+                {
+            'filled': '🍪', 
+            'empty': '▫', 
+            'gift': '🉑'
+        },
+                {
+            'filled': '🟣', 
+            'empty': '⚪', 
+            'gift': '⬛'
         },
     ]
     
@@ -112,11 +127,11 @@ async def notify_customer(bot, customer_id, new_count, required):
         
         # Сразу отправляем сообщение с прогресс-баром
         if was_seventh_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nНапиток в подарок 🎁!"
+            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nНапиток в подарок 🎁"
         elif was_sixth_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nСледующий напиток в подарок"
+            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️"
+            message = f"{user_display_name}\n\n{progress_bar}        +1✔"
         
         await bot.send_message(customer_id, message)
         
@@ -133,11 +148,11 @@ async def notify_customer(bot, customer_id, new_count, required):
     except Exception as e:
         print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
         if was_seventh_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nНапиток в подарок 🎁"
+            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nНапиток в подарок 🎁"
         elif was_sixth_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nСледующий напиток в подарок"
+            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name}\n\n{progress_bar}        + 1 ☑️"
+            message = f"{user_display_name}\n\n{progress_bar}        +1✔"
         await bot.send_message(customer_id, message)
         
 async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -311,9 +326,12 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     styles = [
         {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
         {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
-        {'filled': '🟠', 'empty': '⚪', 'gift': '⬛'},
+        {'filled': '🟨', 'empty': '⚪', 'gift': '⬛'},
         {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
         {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
+        {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
+        {'filled': '🍪', 'empty': '▫', 'gift': '🉑'},
+        {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
     ]
 
 # ВСЕГДА создаем новые настройки для нового клиента
@@ -396,9 +414,12 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     styles = [
         {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
         {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
-        {'filled': '🟠', 'empty': '⚪', 'gift': '⬛'},
+        {'filled': '🟨', 'empty': '⚪', 'gift': '⬛'},
         {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
         {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
+        {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
+        {'filled': '🍪', 'empty': '▫', 'gift': '🉑'},
+        {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
     ]
     
     style = context.user_data.get('customer_style', random.choice(styles))
@@ -447,9 +468,9 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     # Формируем сообщение для баристы
     # Формируем сообщение для баристы
     if show_gift_message:
-        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        + 1 ☑️\n\nСледующий напиток в подарок"
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        +1✔\n\nСледующий напиток в подарок"
     else:
-        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        + 1 ☑️"
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        +1✔"
         print(f"🟢 DEBUG: НЕ показываем надпись")
 
     # Отправляем сообщение баристе
