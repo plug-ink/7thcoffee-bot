@@ -66,7 +66,7 @@ def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=N
         },
                 {
             'filled': '🍪', 
-            'empty': '▫', 
+            'empty': '◻', 
             'gift': '🉑'
         },
                 {
