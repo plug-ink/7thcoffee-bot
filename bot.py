@@ -330,7 +330,7 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
         {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
         {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
         {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
-        {'filled': '🍪', 'empty': '▫', 'gift': '🉑'},
+        {'filled': '🍪', 'empty': '◻', 'gift': '🉑'},
         {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
     ]
 
@@ -418,7 +418,7 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
         {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
         {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
         {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
-        {'filled': '🍪', 'empty': '▫', 'gift': '🉑'},
+        {'filled': '🍪', 'empty': '◻', 'gift': '🉑'},
         {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
     ]
     
