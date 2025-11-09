@@ -127,11 +127,11 @@ async def notify_customer(bot, customer_id, new_count, required):
         
         # Сразу отправляем сообщение с прогресс-баром
         if was_seventh_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nНапиток в подарок 🎁"
+            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nНапиток в подарок 🎁"
         elif was_sixth_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nСледующий напиток в подарок"
+            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name}\n\n{progress_bar}        +1✔"
+            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    "
         
         await bot.send_message(customer_id, message)
         
@@ -148,11 +148,11 @@ async def notify_customer(bot, customer_id, new_count, required):
     except Exception as e:
         print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
         if was_seventh_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nНапиток в подарок 🎁"
+            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nНапиток в подарок 🎁"
         elif was_sixth_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}        +1✔\n\nСледующий напиток в подарок"
+            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий напиток в подарок"
         else:
-            message = f"{user_display_name}\n\n{progress_bar}        +1✔"
+            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    "
         await bot.send_message(customer_id, message)
         
 async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -378,7 +378,7 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
         remaining = required - purchases - 1
         
         if remaining == 0:
-            status_text = "Доступен 🎁"
+            status_text = "Следующий 🎁"
         else:
             status_text = f"Ещё {remaining}" 
     
@@ -468,9 +468,9 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     # Формируем сообщение для баристы
     # Формируем сообщение для баристы
     if show_gift_message:
-        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        +1✔\n\nСледующий напиток в подарок"
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий напиток в подарок"
     else:
-        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}        +1✔"
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    "
         print(f"🟢 DEBUG: НЕ показываем надпись")
 
     # Отправляем сообщение баристе
@@ -929,7 +929,7 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
             remaining = required - purchases - 1
             user_emoji = get_random_user_emoji()
             if remaining == 0:
-                status_text = "Доступен 🎁"
+                status_text = "Следующий 🎁"
             else:
                 status_text = f"Ещё {remaining}"
     
@@ -1753,7 +1753,7 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
             remaining = required - purchases - 1
             user_emoji = get_random_user_emoji()
             if remaining == 0:
-                status_text = "Доступен 🎁"
+                status_text = "Следующий 🎁"
             else:
                 status_text = f"Ещё {remaining}"
     
