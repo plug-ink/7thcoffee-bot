@@ -43,15 +43,15 @@ def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=N
         },
         # Стиль 3: геометри
         {
-            'filled': '🟤', 
-            'empty': '⚪', 
-            'gift': '⚫'
+            'filled': '〄 ', 
+            'empty': '▢ ', 
+            'gift': '◯'
         },
         # Стиль 4: стаканы
         {
             'filled': '🥤', 
-            'empty': '🔲', 
-            'gift': '🔳'
+            'empty': ' ○', 
+            'gift': ' ◍'
         },
         # Стиль 5: базовый
         {
@@ -326,8 +326,8 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     styles = [
         {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
         {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
-        {'filled': '🟨', 'empty': '⚪', 'gift': '⬛'},
-        {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
+        {'filled': '〄 ', 'empty': '▢ ', 'gift': '◯'},
+        {'filled': '🥤', 'empty': ' ○', 'gift': ' ◍'},
         {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
         {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
         {'filled': '🍪', 'empty': '◻', 'gift': '🉑'},
@@ -414,8 +414,8 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     styles = [
         {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
         {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
-        {'filled': '🟨', 'empty': '⚪', 'gift': '⬛'},
-        {'filled': '🥤', 'empty': '🔲', 'gift': '🔳'},
+        {'filled': '〄 ', 'empty': '▢ ', 'gift': '◯'},
+        {'filled': '🥤', 'empty': ' ○', 'gift': ' ◍'},
         {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
         {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
         {'filled': '🍪', 'empty': '◻', 'gift': '🉑'},
