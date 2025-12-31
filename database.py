@@ -64,6 +64,26 @@ class Database:
         self.conn.commit()
         print("✅ База данных инициализирована")
 
+    def find_user_by_phone_last4(self, last4_digits):
+        """Ищет пользователя по последним 4 цифрам номера телефона"""
+        cursor = self.conn.cursor()
+        
+        if not last4_digits.isdigit() or len(last4_digits) != 4:
+            return None
+        
+        # Ищем номер телефона, заканчивающийся на эти 4 цифры
+        cursor.execute('SELECT user_id FROM users WHERE phone LIKE ?', (f'%{last4_digits}',))
+        
+        results = cursor.fetchall()
+        
+        if len(results) == 1:
+            return results[0][0]  # Возвращаем ID единственного пользователя
+        elif len(results) > 1:
+            # Возвращаем список ID для множественных совпадений
+            return [row[0] for row in results]
+        
+        return None
+
     def update_user_phone(self, user_id, phone):
         cursor = self.conn.cursor()
         cursor.execute('UPDATE users SET phone = ? WHERE user_id = ?', (phone, user_id))
