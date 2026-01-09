@@ -1271,6 +1271,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ✅ ДОБАВЬ ЭТОТ БЛОК ДЛЯ ОБЫЧНЫХ БАРИСТ В СОСТОЯНИИ MAIN
+# ✅ ДОБАВЬ ЭТОТ БЛОК ДЛЯ ОБЫЧНЫХ БАРИСТ В СОСТОЯНИИ MAIN
     if role == 'barista' and state == 'main':
         if text == "📲 Добавить номер":
             set_user_state(context, 'adding_customer')
@@ -1286,6 +1287,92 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == "🧾 Инфо":
             await show_barista_promotion_info(update)
             return
+
+        # ⭐⭐⭐ ДОБАВЛЯЕМ ПОИСК ПО НОМЕРУ ДЛЯ ОБЫЧНЫХ БАРИСТ ⭐⭐⭐
+        # Поиск по 4 цифрам
+        elif text.isdigit() and len(text) == 4:
+            results = db.find_user_by_phone_last4(text)
+
+            if results is None:
+                await update.message.reply_text(f"❌ {text} не найден")
+            elif isinstance(results, list) and len(results) > 1:
+                # Множественные совпадения
+                context.user_data['multiple_customers'] = results
+                context.user_data['search_last4'] = text
+
+                keyboard = []
+                for customer_id in results:
+                    cursor = db.conn.cursor()
+                    cursor.execute('SELECT first_name, last_name, phone FROM users WHERE user_id = ?', (customer_id,))
+                    user_info = cursor.fetchone()
+
+                    if user_info:
+                        first_name, last_name, phone = user_info
+                        name = f"{first_name or ''} {last_name or ''}".strip() or f"Клиент {customer_id}"
+                        display_phone = phone[-4:] if phone else "???"
+                        keyboard.append([KeyboardButton(f"📞 {name} ({display_phone})")])
+
+                keyboard.append([KeyboardButton("🔙 Отменить")])
+
+                await update.message.reply_text(
+                    f"🔍 Найдено {len(results)} клиента с окончанием **{text}**:\nВыберите нужного:",
+                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                )
+                set_user_state(context, 'selecting_customer')
+                return
+            else:
+                # Одно совпадение
+                customer_id = results if not isinstance(results, list) else results[0]
+                await update.message.reply_text("✅ Найден клиент")
+                await asyncio.sleep(0.5)
+                await process_customer_scan(update, context, customer_id)
+            return
+
+        # Поиск по 10 цифрам
+        elif text.isdigit() and len(text) == 10:
+            customer_id = db.find_user_by_phone(text)
+            if customer_id:
+                await update.message.reply_text("✅ Найден клиент по номеру")
+                await asyncio.sleep(0.5)
+                await process_customer_scan(update, context, customer_id)
+            else:
+                await update.message.reply_text(f"❌ Клиент с номером {text} не найден\n\nИспользуйте формат: 9996664422 Саша")
+            return
+
+        # Поиск по номеру и имени
+        elif " " in text:
+            try:
+                # Разделяем по первому пробелу: номер имя
+                parts = text.split(" ", 1)
+                phone = parts[0].strip()
+                name = parts[1].strip()
+
+                if phone.isdigit() and len(phone) == 10:
+                    customer_id = db.find_user_by_phone(phone)
+
+                    if customer_id:
+                        await update.message.reply_text("✅ Найден клиент")
+                        await asyncio.sleep(0.5)
+                        await process_customer_scan(update, context, customer_id)
+                    else:
+                        import random
+                        new_customer_id = random.randint(1000000000, 9999999999)
+
+                        db.get_or_create_user(new_customer_id, "", name, "")
+                        db.update_user_phone(new_customer_id, phone)
+
+                        await update.message.reply_text(f"✅ Создан новый клиент: {name} ({phone})")
+                        await asyncio.sleep(0.5)
+                        await process_customer_scan(update, context, new_customer_id)
+
+                    return
+                else:
+                    await update.message.reply_text("❌ Номер должен быть 10 цифр")
+
+            except (ValueError, IndexError):
+                await update.message.reply_text("❌ Формат: номер имя\nПример: 9996664422 Саша")
+            return
+
         # Если обычный бариста в main состоянии нажал другую кнопку - показываем меню баристы
         elif text in ["📲 Добавить номер", "✔ Начислить", "🧾 Инфо"]:
             # Эти кнопки уже обработаны выше
@@ -1294,7 +1381,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Показываем меню баристы для обычных барист в состоянии main
             await show_barista_main(update)
             return
-        
+
     elif state == 'selecting_customer':
         if text.startswith("📞 "):
             # Извлекаем customer_id из кнопки
