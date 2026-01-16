@@ -66,9 +66,9 @@ def get_admin_barista_keyboard():
 
 # ================== АДМИН - УПРАВЛЕНИЕ ПОСЕТИТЕЛЯМИ ==================
 def get_admin_customers_keyboard_after_list():
+    """То же самое - только Назад после списка"""
     return ReplyKeyboardMarkup(
-        [[KeyboardButton("🔍 Найти пользователя")],
-         [KeyboardButton("🔙 Назад")]],
+        [[KeyboardButton("🔙 Назад")]],
         resize_keyboard=True
     )
 
@@ -99,9 +99,9 @@ def get_role_switcher_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_admin_customers_keyboard():
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton("🔍 Найти пользователя")],
-         [KeyboardButton("🔙 Назад")]],
-        resize_keyboard=True
-    )
+    """Клавиатура для раздела пользователей (только Назад)"""
+    keyboard = [
+        [KeyboardButton("🔙 Назад")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

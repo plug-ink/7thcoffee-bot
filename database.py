@@ -64,6 +64,17 @@ class Database:
         self.conn.commit()
         print("✅ База данных инициализирована")
 
+    def delete_user(self, user_id: int) -> bool:
+        """Удаляет пользователя из базы данных"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"❌ Ошибка при удалении пользователя {user_id}: {e}")
+            return False
+
     def find_user_by_phone_last4(self, last4_digits):
         """Ищет пользователя по последним 4 цифрам номера телефона"""
         cursor = self.conn.cursor()
@@ -240,7 +251,7 @@ class Database:
     
     def get_all_users(self):
         cursor = self.conn.cursor()
-        cursor.execute('SELECT user_id, username, first_name, last_name, purchases_count FROM users ORDER BY created_at DESC')
+        cursor.execute('SELECT user_id, username, first_name, last_name, purchases_count, phone FROM users ORDER BY created_at DESC')
         return cursor.fetchall()
     
     def get_all_user_ids(self): 

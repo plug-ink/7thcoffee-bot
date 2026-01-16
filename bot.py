@@ -783,6 +783,7 @@ async def show_barista_management(update: Update):
 async def show_customer_management(update: Update):
     text = "📒 Посетители\n\nИспользуйте кнопки ниже для поиска и управления клиентами"
     await update.message.reply_text(text, reply_markup=get_admin_customers_keyboard())
+
 async def show_all_customers(update: Update):
     print('[DEBUG] show_all_customers вызвана')
     users = db.get_all_users()  # ← нужно добавить в database.py
@@ -794,15 +795,45 @@ async def show_all_customers(update: Update):
     else:
         text = "📖 Список пользователей:\n\n"
         for u in users:
-            user_id, username, first_name, last_name, purchases = u
-            print(f"[DEBUG] user_id={user_id}, username='{username}', first_name='{first_name}', last_name='{last_name}'")
-            name = f"@{username}" if username else f"{first_name or ''} {last_name or ''}".strip() or f"Гость (id:{user_id})"
-            text += f"{name}, {purchases}/{required}\n"
+            user_id, username, first_name, last_name, purchases, phone = u
+            print(f"[DEBUG] user_id={user_id}, username='{username}', first_name='{first_name}', last_name='{last_name}', phone='{phone}'")
             
+            # Формируем информацию о пользователе
+            user_info_parts = []
+            
+            # 1. Имя (если есть)
+            clean_last_name = last_name if last_name and last_name != "None" else ""
+            full_name = f"{first_name or ''} {clean_last_name}".strip()
+            if full_name:
+                user_info_parts.append(f"{full_name}")
+            
+            # 2. @username (если есть и не "Не указан")
+            if username and username != "Не указан":
+                user_info_parts.append(f"@{username}")
+            
+            # 3. Телефон (если есть)
+            if phone:
+                user_info_parts.append(f"{phone}")
+            
+            # 4. ID (для отладки/резерв)
+            if not user_info_parts:
+                user_info_parts.append(f"ID: {user_id}")
+            
+            # Объединяем все части
+            user_display = " • ".join(user_info_parts)
+            
+            # Добавляем счетчик покупок
+            text += f"{user_display} — {purchases}/{required}\n"
+            
+    if users:
+        # Добавляем инструкцию после списка
+        text += "\n\n🔍 Для поиска отправьте:\n• Номер телефона (10 цифр)\n• Последние 4 цифры номера\n• @username пользователя"
+    
     await update.message.reply_text(
-    text,
-    reply_markup=get_admin_customers_keyboard_after_list()  # кнопка «Найти» + «Назад»
+        text,
+        reply_markup=get_admin_customers_keyboard_after_list()
     )
+
 async def show_admin_settings(update: Update):
     promotion = db.get_promotion()
     text = f"""
@@ -829,15 +860,16 @@ async def handle_admin_barista_management(update: Update, context: ContextTypes.
 
 async def handle_admin_customer_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    print("DEBUG admin_customers text:", text)   # ← добавь сюда
-
-    if text == "🔍 Найти пользователя":
-        print("DEBUG: нажата кнопка Найти пользователя")   # ← и сюда
-        set_user_state(context, 'finding_customer_by_username')
-        await update.message.reply_text("Введите @username гостя (без @):")
+    print(f"DEBUG admin_customers text: '{text}'")
+    
+    if text == "🔙 Назад":
+        set_user_state(context, 'main')
+        await show_admin_main(update)
         return
-
-    # остальные elif...
+    
+    # Если админ в разделе "Пользователи" ввел что-то (не кнопку "Назад")
+    # Это может быть: номер (10 цифр), последние 4 цифры, @username, или номер+имя
+    await handle_admin_customer_search(update, context, text)
 
 async def handle_admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
@@ -970,11 +1002,46 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     
     data = query.data
     
-    # Обработка broadcast
+    # 1. Обработка подтверждения удаления (ДОБАВЬ ЭТО ПЕРВЫМ)
+    if data.startswith('confirm_delete_'):
+        customer_id = int(data.replace('confirm_delete_', ''))
+        
+        # Удаляем пользователя
+        if db.delete_user(customer_id):
+            await query.edit_message_text(f"✅ Пользователь удален")
+            
+            # Возвращаем в меню пользователей
+            set_user_state(context, 'admin_customers')
+            
+            # Удаляем сообщение с кнопками управления (если есть)
+            msg_id = context.user_data.get('admin_customer_message_id')
+            if msg_id:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=update.effective_chat.id,
+                        message_id=msg_id
+                    )
+                except:
+                    pass
+            
+            # Показываем меню пользователей
+            await show_customer_management(update)
+        else:
+            await query.edit_message_text(f"❌ Ошибка при удалении пользователя")
+        return
+    
+    elif data.startswith('cancel_delete_'):
+        customer_id = int(data.replace('cancel_delete_', ''))
+        # Возвращаемся к карточке пользователя
+        await show_customer_card_admin(update, context, customer_id)
+        return
+    
+    # 2. Обработка broadcast
     if data.startswith('broadcast_'):
         await handle_broadcast_buttons(update, context)
         return
     
+    # 3. Обработка стилей прогресс-бара
     elif data.startswith('style_'):
         # Формат: style_prev_X или style_next_X (X = user_id)
         action, user_id_str = data.split('_')[1], data.split('_')[2]
@@ -1009,7 +1076,32 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await show_progress_with_choice(update, context, user_id)
         return
     
-    # Обработка начисления/списания покупок
+    # 4. Обработка админских действий над пользователем (НОВАЯ СЕКЦИЯ)
+    elif data.startswith('admin_'):
+        parts = data.split('_')
+        if len(parts) < 3:
+            return
+        
+        action = parts[1]
+        customer_id = int(parts[2])
+        
+        if action == 'add':
+            # Начислить покупку
+            new_count = db.update_user_purchases(customer_id, 1)
+            await update_customer_card(update, context, customer_id, new_count)
+            
+        elif action == 'remove':
+            # Отменить покупку
+            new_count = db.update_user_purchases(customer_id, -1)
+            await update_customer_card(update, context, customer_id, new_count)
+            
+        elif action == 'delete':
+            # Удалить пользователя
+            await handle_delete_user(update, context, customer_id)
+            
+        return
+    
+    # 5. Обработка начисления/списания покупок (старый код)
     if data.startswith('add_'):
         customer_id = int(data.replace('add_', ''))
         # Логика начисления покупки
@@ -1413,6 +1505,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text == "🔙 Отменить":
             set_user_state(context, 'barista_mode')
             await show_barista_main(update)
+        
+        return
+    
+    elif state == 'selecting_customer_admin':
+        if text.startswith("📞 "):
+            # Извлекаем customer_id из кнопки
+            customer_id = None
+            results = context.user_data.get('multiple_customers', [])
+            
+            for cid in results:
+                cursor = db.conn.cursor()
+                cursor.execute('SELECT first_name, last_name, phone FROM users WHERE user_id = ?', (cid,))
+                user_info = cursor.fetchone()
+                
+                if user_info:
+                    first_name, last_name, phone = user_info
+                    name = f"{first_name or ''} {last_name or ''}".strip() or f"Клиент {cid}"
+                    display_phone = phone[-4:] if phone else "???"
+                    
+                    if f"📞 {name} ({display_phone})" == text:
+                        customer_id = cid
+                        break
+            
+            if customer_id:
+                await show_customer_card_admin(update, context, customer_id)
+                # Очищаем временные данные
+                context.user_data.pop('multiple_customers', None)
+                context.user_data.pop('search_last4', None)
+            else:
+                await update.message.reply_text("❌ Ошибка выбора клиента")
+        
+        elif text == "🔙 Отменить":
+            set_user_state(context, 'admin_customers')
+            await update.message.reply_text(
+                "📒 Раздел пользователей\n\n"
+                "Отправьте:\n"
+                "• Номер телефона (10 цифр)\n"
+                "• Последние 4 цифры номера\n"
+                "• @username пользователя\n\n"
+                "Или нажмите 🔙 Назад",
+                reply_markup=get_admin_customers_keyboard()
+            )
         
         return
     
@@ -2106,6 +2240,286 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
 
     print("[DEBUG] 6. user_data ПУСТОЙ – сообщаем 'не найден'")
     await update.message.reply_text("❌ Пользователь не найден.")
+
+async def handle_admin_customer_search(update: Update, context: ContextTypes.DEFAULT_TYPE, search_query: str):
+    """Поиск пользователя администратором по номеру или @username"""
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    
+    # 1. Поиск по 4 последним цифрам номера
+    if search_query.isdigit() and len(search_query) == 4:
+        results = db.find_user_by_phone_last4(search_query)
+        
+        if results is None:
+            await update.message.reply_text(f"❌ Клиент с окончанием {search_query} не найден")
+        elif isinstance(results, list) and len(results) > 1:
+            # Множественные совпадения
+            context.user_data['multiple_customers'] = results
+            context.user_data['search_last4'] = search_query
+            
+            keyboard = []
+            for customer_id in results:
+                cursor = db.conn.cursor()
+                cursor.execute('SELECT first_name, last_name, phone FROM users WHERE user_id = ?', (customer_id,))
+                user_info = cursor.fetchone()
+                
+                if user_info:
+                    first_name, last_name, phone = user_info
+                    name = f"{first_name or ''} {last_name or ''}".strip() or f"Клиент {customer_id}"
+                    display_phone = phone[-4:] if phone else "???"
+                    keyboard.append([KeyboardButton(f"📞 {name} ({display_phone})")])
+            
+            keyboard.append([KeyboardButton("🔙 Отменить")])
+            
+            await update.message.reply_text(
+                f"🔍 Найдено {len(results)} клиента с окончанием **{search_query}**:\nВыберите нужного:",
+                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            )
+            set_user_state(context, 'selecting_customer_admin')
+            return
+        else:
+            # Одно совпадение
+            customer_id = results if not isinstance(results, list) else results[0]
+            await show_customer_card_admin(update, context, customer_id)
+        return
+    
+    # 2. Поиск по полному номеру (10 цифр)
+    elif search_query.isdigit() and len(search_query) == 10:
+        customer_id = db.find_user_by_phone(search_query)
+        if customer_id:
+            await show_customer_card_admin(update, context, customer_id)
+        else:
+            await update.message.reply_text(f"❌ Клиент с номером {search_query} не найден")
+        return
+    
+    # 3. Поиск по @username (убираем @ если есть)
+    elif search_query.startswith('@'):
+        username_input = search_query[1:].strip()
+        user_data = db.get_user_by_username_exact(username_input)
+        
+        if user_data:
+            customer_id = user_data[0]
+            await show_customer_card_admin(update, context, customer_id)
+        else:
+            await update.message.reply_text(f"❌ Пользователь @{username_input} не найден")
+        return
+    
+    # 4. Поиск по username без @
+    else:
+        # Пробуем найти по username без @
+        user_data = db.get_user_by_username_exact(search_query)
+        if user_data:
+            customer_id = user_data[0]
+            await show_customer_card_admin(update, context, customer_id)
+            return
+    
+    # 5. Если ничего не нашли
+    await update.message.reply_text(
+        "❌ Пользователь не найден. Ищите по:\n"
+        "• Номеру телефона (10 цифр)\n"
+        "• Последним 4 цифрам номера\n"
+        "• @username пользователя\n\n"
+        "Или нажмите 🔙 Назад"
+    )
+
+async def show_customer_card_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
+    """Показывает карточку пользователя администратору с управлением"""
+    # Получаем данные пользователя
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT username, first_name, last_name, phone, purchases_count FROM users WHERE user_id = ?', (customer_id,))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        await update.message.reply_text("❌ Пользователь не найден")
+        return
+    
+    username, first_name, last_name, phone, purchases = user_info
+    
+    # Формируем информацию о пользователе
+    user_info_parts = []
+    
+    # Имя
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    full_name = f"{first_name or ''} {clean_last_name}".strip()
+    if full_name:
+        user_info_parts.append(f"👤 {full_name}")
+    
+    # @username
+    if username and username != "Не указан":
+        user_info_parts.append(f"📱 @{username}")
+    
+    # Телефон
+    if phone:
+        user_info_parts.append(f"📞 {phone}")
+    
+    # ID
+    user_info_parts.append(f"🆔 {customer_id}")
+    
+    user_display = "\n".join(user_info_parts)
+    
+    # Получаем прогресс
+    promotion = db.get_promotion()
+    required = promotion[2] if promotion else 7
+    
+    # Создаем прогресс-бар
+    progress_bar = get_coffee_progress(purchases, required)
+    
+    # Формируем сообщение
+    text = f"""
+{user_display}
+
+{progress_bar}
+{purchases}/{required}
+
+Выберите действие:
+"""
+    
+    # СОЗДАЕМ INLINE-КЛАВИАТУРУ с кнопкой удаления
+    inline_keyboard = [
+        [
+            InlineKeyboardButton("➕ Начислить", callback_data=f"admin_add_{customer_id}"),
+            InlineKeyboardButton("➖ Отменить", callback_data=f"admin_remove_{customer_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ Удалить", callback_data=f"admin_delete_{customer_id}")
+        ]
+    ]
+    
+    # СОЗДАЕМ REPLY-КЛАВИАТУРУ (обычные кнопки)
+    reply_keyboard = [
+        [KeyboardButton("✏️ Изменить данные")],
+        [KeyboardButton("🔙 Назад")]
+    ]
+    
+    # Сохраняем ID пользователя для дальнейших действий
+    context.user_data['current_customer'] = customer_id
+    context.user_data['current_username'] = username or f"{first_name} {last_name}".strip()
+    
+    # Отправляем сообщение с ДВУМЯ клавиатурами
+    # Сначала inline-кнопки
+    message = await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard)
+    )
+    
+    # Сохраняем ID сообщения для возможного редактирования
+    context.user_data['admin_customer_message_id'] = message.message_id
+    
+    # Потом reply-кнопки
+    await update.message.reply_text(
+        "Используйте кнопки выше для управления или:",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+    )
+    
+    # Меняем состояние на управление конкретным пользователем
+    set_user_state(context, 'admin_customer_actions')
+
+async def update_customer_card(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int, new_count: int):
+    """Обновляет карточку пользователя после изменения счетчика"""
+    # Получаем обновленные данные
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT username, first_name, last_name, phone, purchases_count FROM users WHERE user_id = ?', (customer_id,))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        await update.callback_query.edit_message_text("❌ Пользователь не найден")
+        return
+    
+    username, first_name, last_name, phone, purchases = user_info
+    
+    # Формируем информацию о пользователе
+    user_info_parts = []
+    
+    # Имя
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    full_name = f"{first_name or ''} {clean_last_name}".strip()
+    if full_name:
+        user_info_parts.append(f"👤 {full_name}")
+    
+    # @username
+    if username and username != "Не указан":
+        user_info_parts.append(f"📱 @{username}")
+    
+    # Телефон
+    if phone:
+        user_info_parts.append(f"📞 {phone}")
+    
+    # ID
+    user_info_parts.append(f"🆔 {customer_id}")
+    
+    user_display = "\n".join(user_info_parts)
+    
+    # Получаем прогресс
+    promotion = db.get_promotion()
+    required = promotion[2] if promotion else 7
+    
+    # Создаем прогресс-бар
+    progress_bar = get_coffee_progress(purchases, required)
+    
+    # Формируем сообщение
+    text = f"""
+{user_display}
+
+{progress_bar}
+{purchases}/{required}
+
+Выберите действие:
+"""
+    
+    # Обновляем inline-клавиатуру
+    inline_keyboard = [
+        [
+            InlineKeyboardButton("➕ Начислить", callback_data=f"admin_add_{customer_id}"),
+            InlineKeyboardButton("➖ Отменить", callback_data=f"admin_remove_{customer_id}")
+        ],
+        [
+            InlineKeyboardButton("🗑️ Удалить", callback_data=f"admin_delete_{customer_id}")
+        ]
+    ]
+    
+    await update.callback_query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard)
+    )
+    
+    # Если была 7-я покупка (подарок), уведомляем
+    if purchases == 0 and new_count == 0:  # Сброс после подарка
+        await notify_customer(context.bot, customer_id, purchases, required)
+
+async def handle_delete_user(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
+    """Удаляет пользователя с подтверждением"""
+    # Получаем данные пользователя для отображения
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        await update.callback_query.edit_message_text("❌ Пользователь не найден")
+        return
+    
+    username, first_name, last_name = user_info
+    
+    # Формируем имя для отображения
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    full_name = f"{first_name or ''} {clean_last_name}".strip()
+    if not full_name:
+        full_name = f"@{username}" if username and username != "Не указан" else f"Пользователь {customer_id}"
+    
+    # Создаем клавиатуру подтверждения
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_delete_{customer_id}"),
+            InlineKeyboardButton("❌ Нет, отменить", callback_data=f"cancel_delete_{customer_id}")
+        ]
+    ]
+    
+    await update.callback_query.edit_message_text(
+        f"⚠️ Вы уверены, что хотите удалить пользователя?\n\n"
+        f"{full_name}\n"
+        f"ID: {customer_id}\n\n"
+        f"Это действие нельзя отменить!",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Справка по командам - ТОЛЬКО для админа"""
