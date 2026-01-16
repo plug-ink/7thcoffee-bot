@@ -532,7 +532,7 @@ async def handle_admin_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_barista_management(update)
     elif text == "📒 Посетители":
         set_user_state(context, 'admin_customers')
-        await show_all_customers(update)
+        await show_all_customers(update, context)
     elif text == "📣 Рассылка":  # ← ИЗМЕНИТЕ ЭТОТ БЛОК
         set_user_state(context, 'broadcast_message')
         # НЕ УБИРАЕМ КЛАВИАТУРУ, просто меняем состояние
@@ -784,9 +784,14 @@ async def show_customer_management(update: Update):
     text = "📒 Посетители\n\nИспользуйте кнопки ниже для поиска и управления клиентами"
     await update.message.reply_text(text, reply_markup=get_admin_customers_keyboard())
 
-async def show_all_customers(update: Update):
+async def show_all_customers(update: Update, context: ContextTypes.DEFAULT_TYPE = None):
     print('[DEBUG] show_all_customers вызвана')
-    users = db.get_all_users()  # ← нужно добавить в database.py
+    
+    # МЕНЯЕМ СОСТОЯНИЕ НА admin_customers
+    if context:
+        set_user_state(context, 'admin_customers')
+    
+    users = db.get_all_users()
     promotion = db.get_promotion()
     required = promotion[2] if promotion else 7
 
@@ -869,7 +874,7 @@ async def handle_admin_customer_management(update: Update, context: ContextTypes
     
     # Если только что вошли в раздел "Пользователи" - показываем список
     if text == "📒 Посетители":
-        await show_all_customers(update)
+        await show_all_customers(update, context)
         return
     
     # Если админ в разделе "Пользователи" ввел что-то (не кнопку "Назад")
