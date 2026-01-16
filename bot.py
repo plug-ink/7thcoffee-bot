@@ -867,6 +867,11 @@ async def handle_admin_customer_management(update: Update, context: ContextTypes
         await show_admin_main(update)
         return
     
+    # Если только что вошли в раздел "Пользователи" - показываем список
+    if text == "📒 Посетители":
+        await show_all_customers(update)
+        return
+    
     # Если админ в разделе "Пользователи" ввел что-то (не кнопку "Назад")
     # Это может быть: номер (10 цифр), последние 4 цифры, @username, или номер+имя
     await handle_admin_customer_search(update, context, text)
