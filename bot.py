@@ -414,6 +414,19 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     # Отправляем сообщение с информацией о клиенте и ОБНОВЛЕННОЙ клавиатурой
     await update.message.reply_text(text, reply_markup=reply_markup)    
     # Бариста теперь может нажать ✔ Начислить для начисления покупки
+
+        # Устанавливаем состояние для баристы или админа
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    role = get_user_role(user_id, username)
+    
+    if role == 'barista':
+        set_user_state(context, 'barista_mode')
+    elif role == 'admin':
+        set_user_state(context, 'barista_mode')  # админ в режиме баристы
+    
+    print(f"🟢 DEBUG: Установлено состояние '{get_user_state(context)}' для клиента {customer_id}")
+
 async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
     """Обработка начисления покупки по кнопке ✔ Начислить"""
     print(f"🔴 DEBUG process_coffee_purchase: начали, customer_id={customer_id}")
@@ -1509,6 +1522,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Очищаем временные данные
                 context.user_data.pop('multiple_customers', None)
                 context.user_data.pop('search_last4', None)
+
+                                # ✅ ДОБАВЬ ЭТО: Устанавливаем правильное состояние
+                user_id = update.effective_user.id
+                username = update.effective_user.username
+                role = get_user_role(user_id, username)
+                
+                if role == 'barista':
+                    set_user_state(context, 'barista_mode')
+                elif role == 'admin':
+                    set_user_state(context, 'barista_mode')
+                
+                print(f"🟢 DEBUG: После выбора из списка установлено состояние '{get_user_state(context)}'")
             else:
                 await update.message.reply_text("❌ Ошибка выбора клиента")
         
@@ -1733,10 +1758,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("❌ Введите корректное число")
         return
-    
-    
+      
     elif state == 'barista_mode':
-        if text.isdigit() and len(text) == 4:
+        # 1. ПЕРВЫМИ проверяем КНОПКИ (важные действия)
+        if text == "✔ Начислить":
+            print(f"🟡 DEBUG: Обрабатываем +1, текущее состояние: {state}")
+            customer_id = context.user_data.get('current_customer')
+            if customer_id:
+                await process_coffee_purchase(update, context, customer_id)
+            else:
+                await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
+            return
+        
+        elif text == "📲 Добавить номер":
+            set_user_state(context, 'adding_customer')
+            await update.message.reply_text("💬 Для добавления отправь\nНОМЕР ИМЯ\nв формате как это:\n\n9996664422 Саша")
+            return
+            
+        elif text == "🧾 Инфо":
+            await show_barista_promotion_info(update)
+            return
+        
+        # 2. ПОТОМ проверяем поисковые запросы
+        elif text.isdigit() and len(text) == 4:
             results = db.find_user_by_phone_last4(text)
 
             if results is None:
@@ -1773,22 +1817,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await asyncio.sleep(0.5)
                 await process_customer_scan(update, context, customer_id)
             return
-
-        if text == "🧾 Инфо":
-            await show_barista_promotion_info(update)
-            return
-        elif text == "✔ Начислить":
-            print(f"🟡 DEBUG: Обрабатываем +1, текущее состояние: {state}")
-            customer_id = context.user_data.get('current_customer')
-            if customer_id:
-                await process_coffee_purchase(update, context, customer_id)
-            else:
-                await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
-            return
-        elif text == "📲 Добавить номер":  # ← ДОБАВЬ ЭТУ СТРОКУ
-            set_user_state(context, 'adding_customer')
-            await update.message.reply_text("💬 Для добавления отправь\nНОМЕР ИМЯ\nв формате как это:\n\n9996664422 Саша")
-            return
+        
         elif " " in text:
             try:
                 # Разделяем по первому пробелу: номер имя
@@ -1822,8 +1851,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
             except (ValueError, IndexError):
                 await update.message.reply_text("❌ Формат: номер имя\nПример: 9996664422 Саша")
-
-
+            return
+        
         elif text.isdigit() and len(text) == 10:
             customer_id = db.find_user_by_phone(text)
             if customer_id:
@@ -1832,8 +1861,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await process_customer_scan(update, context, customer_id)
             else:
                 await update.message.reply_text(f"❌ Клиент с номером {text} не найден\n\nИспользуйте формат: 9996664422 Саша")
+            return
+        
+        # 3. ЕСЛИ ничего не подошло - показываем инструкцию
         else:
             await update.message.reply_text("📸 Отправьте фото QR или введите номер имя\nПример: 9996664422 Саша")
+            return
+
 
     elif state == 'barista_action':
         if text == "✔ Засчитать покупку":
@@ -2137,8 +2171,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             set_user_state(context, 'adding_customer')
             await update.message.reply_text("💬 Для добавления отправь\nНОМЕР ИМЯ\nв формате как это:\n\n9996664422 Саша")
         # Вместо перезапуска показываем текущее меню
-        elif state == 'barista_mode':
-            await show_barista_main(update)
+        # elif state == 'barista_mode':
+        #     await show_barista_main(update)
         elif state == 'client_mode':
             await show_client_main(update, context)
         elif state == 'main' and role == 'admin':
