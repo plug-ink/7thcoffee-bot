@@ -7,7 +7,7 @@ class Database:
     def __init__(self, db_name='coffee_bot.db'):
         self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.create_tables()
-        self.update_database_schema()  # ← ДОБАВЬ ЭТУ СТРОКУ
+        self.update_database_schema()
 
     def create_tables(self):
         cursor = self.conn.cursor()
@@ -24,7 +24,6 @@ class Database:
             )
         ''')
         
-        # Баристы
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS baristas (
                 username TEXT PRIMARY KEY,
@@ -35,7 +34,6 @@ class Database:
             )
         ''')
         
-        # Настройки акции
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS promotions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +44,14 @@ class Database:
             )
         ''')
 
-        # Администраторы (дополнительно к .env)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_styles (
+                user_id INTEGER PRIMARY KEY,
+                style_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')    
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admins (
                 user_id INTEGER PRIMARY KEY,
@@ -55,7 +60,6 @@ class Database:
             )
         ''')
         
-        # Добавляем акцию по умолчанию
         cursor.execute('''
             INSERT OR IGNORE INTO promotions (name, required_purchases, description) 
             VALUES ('Каждый 7-й напиток бесплатно', 7, 'Покажите QR-код при каждой покупке')
@@ -82,15 +86,13 @@ class Database:
         if not last4_digits.isdigit() or len(last4_digits) != 4:
             return None
         
-        # Ищем номер телефона, заканчивающийся на эти 4 цифры
         cursor.execute('SELECT user_id FROM users WHERE phone LIKE ?', (f'%{last4_digits}',))
         
         results = cursor.fetchall()
         
         if len(results) == 1:
-            return results[0][0]  # Возвращаем ID единственного пользователя
+            return results[0][0]
         elif len(results) > 1:
-            # Возвращаем список ID для множественных совпадений
             return [row[0] for row in results]
         
         return None
@@ -101,7 +103,7 @@ class Database:
         self.conn.commit()
         return cursor.rowcount > 0
     
-    # === ПОЛЬЗОВАТЕЛИ ===
+# ================== ПОЛЬЗОВАТЕЛИ (USERS) ==================
     def get_or_create_user(self, user_id, username="", first_name="", last_name=""):
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -120,6 +122,7 @@ class Database:
         cursor.execute('SELECT purchases_count FROM users WHERE user_id = ?', (user_id,))
         result = cursor.fetchone()
         return result[0] if result else 0
+
     def update_user_purchases(self, user_id, change):
         """Изменяет счётчик покупок с авто-обнулением при достижении акции"""
         promo = self.get_promotion()
@@ -131,11 +134,10 @@ class Database:
     
         new_val = current + change
     
-    # Сброс при достижении точного значения required
         if change == +1 and new_val >= required:
             new_val = 0
     
-        new_val = max(0, new_val)  # Защита от отрицательных значений
+        new_val = max(0, new_val)
     
         cursor.execute('UPDATE users SET purchases_count = ? WHERE user_id = ?', (new_val, user_id))
         self.conn.commit()
@@ -152,7 +154,7 @@ class Database:
         cursor.execute('SELECT user_id, username, first_name, last_name FROM users WHERE username = ? LIMIT 1', (username,))
         return cursor.fetchone()
 
-    # === БАРИСТЫ ===
+# ================== БАРИСТЫ (BARISTAS) ==================
     def is_user_barista(self, username):
         if not username:
             return False
@@ -183,14 +185,13 @@ class Database:
     def clean_invalid_baristas(self):
         """Удаляет некорректные записи бариста"""
         cursor = self.conn.cursor()
-        # Удаляем записи с некорректными username
         invalid_usernames = ['Список', 'Удалить', 'Добавить', 'Назад', '📋 Список', '➖ Удалить', '➕ Добавить', '🔙 Назад']
         for username in invalid_usernames:
             cursor.execute('UPDATE baristas SET is_active = 0 WHERE username = ?', (username,))
         self.conn.commit()
         return True
 
-    # === АКЦИИ ===
+# ================== АКЦИИ (PROMOTIONS) ==================
     def get_promotion(self):
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM promotions WHERE is_active = 1 LIMIT 1')
@@ -206,7 +207,7 @@ class Database:
             cursor.execute('UPDATE promotions SET name = ? WHERE is_active = 1', (name,))
         self.conn.commit()
 
-    # === АДМИНЫ ===
+# ================== АДМИНЫ (ADMINS) ==================
     def add_admin(self, user_id: int) -> bool:
         cursor = self.conn.cursor()
         cursor.execute('INSERT OR REPLACE INTO admins (user_id, is_active) VALUES (?, 1)', (user_id,))
@@ -229,8 +230,7 @@ class Database:
         cursor.execute('SELECT user_id FROM admins WHERE is_active = 1')
         return [row[0] for row in cursor.fetchall()]
     
-        # === БЭКАП ===
-
+# ================== БЭКАП (BACKUP) ==================
     def backup_db(self) -> str:
         """Создаёт копию БД и возвращает путь до файла"""
         os.makedirs('backup', exist_ok=True)
@@ -244,10 +244,10 @@ class Database:
         """Оставляет только keep последних копий"""
         try:
             files = sorted(Path('backup').glob('coffee_bot_*.db'))
-            for f in files[:-keep]:  # удаляем всё, кроме последних keep
+            for f in files[:-keep]:
                 f.unlink()
         except Exception:
-            pass  # молчим, если не получилось
+            pass
     
     def get_all_users(self):
         cursor = self.conn.cursor()
@@ -258,31 +258,55 @@ class Database:
         """Получить всех пользователей бота (только user_id для рассылки)"""
         cursor = self.conn.cursor()
         cursor.execute('SELECT user_id FROM users')
-        return [row[0] for row in cursor.fetchall()]  # ← возвращаем список ID
+        return [row[0] for row in cursor.fetchall()]
     
     def find_user_by_phone(self, phone_number):
         """Ищет пользователя по номеру телефона"""
         cursor = self.conn.cursor()
-    
-    # Нормализуем номер (оставляем только цифры)
         normalized_phone = ''.join(filter(str.isdigit, phone_number))
-    
-    # Ищем в базе
         cursor.execute('SELECT user_id FROM users WHERE phone = ?', (normalized_phone,))
-    
         result = cursor.fetchone()
         return result[0] if result else None
     
+# ================== СТИЛИ ПРОГРЕСС-БАРА (PROGRESS BAR STYLES) ==================
+    def save_user_style(self, user_id: int, style_index: int) -> bool:
+        """Сохраняет выбранный стиль прогресс-бара для пользователя"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO user_styles (user_id, style_index) 
+                VALUES (?, ?)
+            ''', (user_id, style_index))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Ошибка сохранения стиля для {user_id}: {e}")
+            return False
+
+    def get_user_style(self, user_id: int) -> int:
+        """Возвращает сохраненный стиль прогресс-бара пользователя"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('SELECT style_index FROM user_styles WHERE user_id = ?', (user_id,))
+            result = cursor.fetchone()
+            return result[0] if result else 0
+        except Exception as e:
+            print(f"❌ Ошибка получения стиля для {user_id}: {e}")
+            return 0
+
+    def get_user_style_if_exists(self, user_id: int):
+        """Возвращает стиль или None если не установлен"""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT style_index FROM user_styles WHERE user_id = ?', (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
     def update_database_schema(self):
         """Обновляет структуру базы данных если нужно"""
         cursor = self.conn.cursor()
-    
-    # Проверяем есть ли поле phone в таблице users
         cursor.execute("PRAGMA table_info(users)")
         columns = [column[1] for column in cursor.fetchall()]
-    
         if 'phone' not in columns:
-            # Добавляем поле phone если его нет
             cursor.execute('ALTER TABLE users ADD COLUMN phone TEXT')
             self.conn.commit()
             print("✅ Добавлено поле phone в таблицу users")

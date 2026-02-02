@@ -7,20 +7,40 @@ from qr_manager import generate_qr_code, parse_qr_data, read_qr_from_image
 from keyboards import *
 import asyncio
 
-
-
 import random
 
-def get_random_user_emoji():
-    """Возвращает случайный эмодзи для отображения пользователя"""
-    user_emojis = [
-        "🧘‍♀️", "🤸‍♂️", "🛀", "🤾‍♀️", "🏄‍♂️", "🏂", "⛷", "🧖‍♀️", "🧌", "🕴",
-        "🧙‍♂️", "🧛‍♂️", "🎅", "👼", "👨‍🚀", "👩‍🏫", "🧏", "💁‍♂️", "👹", 
-        "🙊", "🙉", "🙈"
-    ]
-    return random.choice(user_emojis)
+db = Database()
 
-def get_coffee_progress(current, total, style=None):  # ← ДОБАВЬ style=None
+def escape_markdown(text: str, version: int = 1) -> str:
+    """
+    Экранирует специальные символы для Telegram Markdown
+    version=1: обычный Markdown
+    version=2: MarkdownV2
+    """
+    if version == 2:
+        # Для MarkdownV2
+        escape_chars = r'_*[]()~`>#+-=|{}.!'
+    else:
+        # Для обычного Markdown
+        escape_chars = r'_*`['
+    
+    return ''.join(['\\' + char if char in escape_chars else char for char in text])
+
+def get_user_emoji(user_data):
+    """
+    Возвращает эмодзи для пользователя:
+    ▪️ - если есть username (клиент с QR)
+    ▫️ - если нет username (клиент добавлен по номеру)
+    """
+    username = user_data.get('username') if isinstance(user_data, dict) else user_data
+    
+    # Если передали строку с username
+    if isinstance(username, str) and username and username != "Не указан":
+        return "▪️"
+    else:
+        return "▫️"
+
+def get_coffee_progress(current, total, style=None):
     """Создает визуальный прогресс-бар из случайного набора эмодзи"""
     if total <= 0:
         return "❌ Ошибка акции"
@@ -106,59 +126,126 @@ async def notify_customer(bot, customer_id, new_count, required):
     first_name = user_info[1] if user_info and user_info[1] else ""
     last_name = user_info[2] if user_info and user_info[2] else ""
 
-# ПРИОРИТЕТ: Имя Фамилия > username > Гость
     clean_last_name = last_name if last_name and last_name != "None" else ""
     user_display_name = f"{first_name} {clean_last_name}".strip()
     if not user_display_name:
         user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
-    # ИСПРАВЛЕНИЕ: Не запрашиваем purchases_count повторно, используем new_count
-    # Проверяем, была ли это 6-я покупка (перед подарком)
-# Проверяем, была ли это 6-я покупка (перед подарком)
-    was_sixth_purchase = (new_count == required - 1)  # 6 покупок при required=7
-
-# Проверяем, была ли это 7-я покупка (подарок)
+    
+    # Проверяем, была ли это 7-я покупка (подарок)
     was_seventh_purchase = (new_count == 0)  # сброс после 7-й покупки
-
-# Прогресс-бар после начисления
+    
+    # Получаем СОХРАНЕННЫЙ стиль клиента из базы
+    user_saved_style_index = db.get_user_style(customer_id)
+    all_styles = [
+        {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
+        {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
+        {'filled': '☕', 'empty': '⚪', 'gift': '🟤'},
+        {'filled': '🥤', 'empty': '⚪', 'gift': '🔴'},
+        {'filled': '☕', 'empty': '▫', 'gift': '🎁'},
+        {'filled': '🍜', 'empty': '◾', 'gift': '🈹'},
+        {'filled': '🍪', 'empty': '◻', 'gift': '🉑'},
+        {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
+        {'filled': '🧋', 'empty': '⚪', 'gift': '🟠'},
+    ]
+    
+    # Используем сохраненный стиль ИЛИ первый по умолчанию
+    saved_style = all_styles[user_saved_style_index] if user_saved_style_index is not None else all_styles[0]
+    
+    # Прогресс-бар после начисления (с СОХРАНЕННЫМ стилем)
+    # Для 7-й покупки показываем полный прогресс-бар
     if was_seventh_purchase:
-    # Показываем полный прогресс-бар для 7-й покупки
-        progress_bar = get_coffee_progress(required, required)  # 7 из 7
+        progress_bar = get_coffee_progress(required, required, saved_style)  # 7 из 7
     else:
-        progress_bar = get_coffee_progress(new_count, required)
+        progress_bar = get_coffee_progress(new_count, required, saved_style)
     
     try:
-        # ОТПРАВЛЯЕМ СТИКЕР И СООБЩЕНИЕ ОДНОВРЕМЕННО
-        sticker_msg = await bot.send_sticker(customer_id, "CAACAgIAAxkBAAIXcmkJz75zJHyaWzadj8tpXsWv8PTsAAKgkwACe69JSNZ_88TxnRpuNgQ")
+        # 1. СНАЧАЛА отправляем стикер
+        sticker_msg = await bot.send_sticker(customer_id, "CAACAgIAAxkDAAJCWml4E2UZ3o5bF8T6JKPkXSD0KzUoAAKgkwACe69JSNZ_88TxnRpuOAQ")
         
-        # Сразу отправляем сообщение с прогресс-баром
+        # 2. Если это 7-я покупка (подарок) - отправляем 3 отдельных сообщения
         if was_seventh_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nНапиток в подарок 🎁"
-        elif was_sixth_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий напиток в подарок"
-        else:
-            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    "
-        
-        await bot.send_message(customer_id, message)
-        
-        # Удаляем стикер через 4 секунды
-        async def delete_sticker_later():
-            await asyncio.sleep(4)
+            # Сообщение 1: "Напиток в подарок 🎁" (сразу после стикера)
+            await asyncio.sleep(0.5)  # небольшая задержка после стикера
+            gift_msg = await bot.send_message(customer_id, "Напиток в подарок 🎁")
+            
+            # Сообщение 2: Только прогресс-бар (полный, 7 эмодзи)
+            await asyncio.sleep(0.5)
+            progress_msg = await bot.send_message(customer_id, progress_bar)
+            
+            # Сообщение 3: Карточка клиента с новым счетчиком (0/7)
+            await asyncio.sleep(3)  # прогресс-бар висит 3 секунды
+            
+            # Удаляем сообщение с прогресс-баром
             try:
-                await sticker_msg.delete()
+                await progress_msg.delete()
             except Exception:
                 pass
-        
-        asyncio.create_task(delete_sticker_later())
+            
+            # Отправляем обновленную карточку
+            # Определяем эмодзи: ▪️ если есть username (клиент с QR), ▫️ если нет
+            user_emoji = "▪️" if username and username != "Не указан" and username != "None" else "▫️"
+            
+            # Получаем телефон для отображения
+            cursor.execute('SELECT phone FROM users WHERE user_id = ?', (customer_id,))
+            phone_result = cursor.fetchone()
+            phone_display = f"📞 {phone_result[0]}" if phone_result and phone_result[0] else ""
+            
+            # Создаем прогресс-бар для обнуленного состояния (0/7)
+            reset_progress_bar = get_coffee_progress(0, required, saved_style)
+            
+            # Формируем текст карточки
+            card_text = f"{user_emoji} {user_display_name}\n{phone_display}\n\n{reset_progress_bar}"
+            
+            await bot.send_message(customer_id, card_text)
+            
+            # Удаляем стикер через 4 секунды от начала
+            async def delete_sticker_later():
+                await asyncio.sleep(4)
+                try:
+                    await sticker_msg.delete()
+                except Exception:
+                    pass
+            
+            asyncio.create_task(delete_sticker_later())
+            
+        else:
+            # Если НЕ 7-я покупка - оставляем старый формат (для 1-6 покупок)
+            # Проверяем, была ли это 6-я покупка (перед подарком)
+            was_sixth_purchase = (new_count == required - 1)  # 6 покупок при required=7
+            
+            if was_sixth_purchase:
+                message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий 🎁"
+            else:
+                # Добавляем цифру оставшихся покупок
+                remaining = required - new_count - 1
+                if remaining > 0:
+                    message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\n{remaining}"
+                else:
+                    message = f"{user_display_name}\n\n{progress_bar}            ☑ new    "
+            
+            await bot.send_message(customer_id, message)
+            
+            # Удаляем стикер через 4 секунды
+            async def delete_sticker_later():
+                await asyncio.sleep(4)
+                try:
+                    await sticker_msg.delete()
+                except Exception:
+                    pass
+            
+            asyncio.create_task(delete_sticker_later())
     
     except Exception as e:
-        print(f"❌ Не удалось отправить стикер клиенту {customer_id}: {e}")
-        if was_seventh_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nНапиток в подарок 🎁"
-        elif was_sixth_purchase:
-            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий напиток в подарок"
-        else:
-            message = f"{user_display_name}\n\n{progress_bar}            ☑ new    "
-        await bot.send_message(customer_id, message)
+        print(f"❌ Не удалось отправить уведомление клиенту {customer_id}: {e}")
+        # Fallback: отправляем простое сообщение при ошибке
+        try:
+            if was_seventh_purchase:
+                fallback_msg = "Напиток в подарок 🎁\n\nСчетчик обнулен. Спасибо за покупку!"
+                await bot.send_message(customer_id, fallback_msg)
+            else:
+                await bot.send_message(customer_id, f"+1 покупка! Теперь у вас: {new_count}/{required}")
+        except Exception:
+            pass
         
 async def get_sticker_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для получения ID любого стикера"""
@@ -171,14 +258,13 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = sticker.file_id
     
     await update.message.reply_text(
-        f"📦 ID стикера:\n`{sticker_id}`\n\n"
+        escape_markdown(f"📦 ID стикера:\n`{sticker_id}`\n\n"
         f"🎭 Эмодзи: {sticker.emoji or 'нет'}\n"
-        f"📏 Набор: {sticker.set_name or 'нет'}",
+        f"📏 Набор: {sticker.set_name or 'нет'}", version=1),
         parse_mode='Markdown'
     )
-db = Database()
 
-# ================== СИСТЕМА СОСТОЯНИЙ ==================
+# ================== СИСТЕМА СОСТОЯНИЙ (STATE MANAGEMENT) ==================
 def set_user_state(context, state):
     context.user_data['state'] = state
 
@@ -186,7 +272,7 @@ def get_user_state(context):
     return context.user_data.get('state', 'main')
 
 def is_admin(user_id):
-    return user_id in ADMIN_IDS     # ← список из config.py
+    return user_id in ADMIN_IDS
 
 def get_user_role(user_id, username):
     """Определяет роль пользователя"""
@@ -197,7 +283,7 @@ def get_user_role(user_id, username):
     else:
         return 'client'
 
-# ================== ОСНОВНЫЕ КОМАНДЫ ==================
+# ================== ОСНОВНЫЕ КОМАНДЫ (MAIN COMMANDS) ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -212,16 +298,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif role == 'barista':
         await show_barista_main(update)
     else:
-        await show_client_main(update, context)  # ← ДОБАВЬТЕ context здесь
+        await show_client_main(update, context)
     print(f"🔍 user_id={user_id}, username=@{user.username}")
     print(f"📨 роль={get_user_role(user_id, user.username)}")
-# ================== РЕЖИМ КЛИЕНТА ==================
+
+# ================== РЕЖИМ КЛИЕНТА (CLIENT MODE) ==================
 async def show_client_main(update: Update, context: ContextTypes.DEFAULT_TYPE = None):
     user = update.effective_user
     user_id = user.id
     role = get_user_role(user.id, user.username)
 
-    print(f"🔧 show_client_main: role={role}, state={get_user_state(context)}")  # ← ДОБАВЬ ЭТУ СТРОКУ
+    print(f"🔧 show_client_main: role={role}, state={get_user_state(context)}")
 
     text = """
 🤎 Добро пожаловать в CoffeeRina (bot)!
@@ -229,7 +316,7 @@ async def show_client_main(update: Update, context: ContextTypes.DEFAULT_TYPE = 
 
     keyboard = get_client_keyboard_with_back() if role == 'admin' else get_client_keyboard()
     
-    print(f"🔧 Клавиатура: {keyboard}")  # ← И ЭТУ СТРОКУ
+    print(f"🔧 Клавиатура: {keyboard}")
 
     if update.message:
         await update.message.reply_text(text, reply_markup=keyboard)
@@ -245,9 +332,8 @@ async def show_client_main(update: Update, context: ContextTypes.DEFAULT_TYPE = 
 async def handle_client_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
-    print(f"🟡 DEBUG handle_client_mode: text='{text}', user_id={user_id}")
     
-    if text == "📱 Мой QR":
+    if text == "◾️QR-код":
         await send_qr_code(update, user_id)
     elif text == "🎁 Акции":
         await show_promotion_info_with_context(update, context)
@@ -258,7 +344,7 @@ async def handle_client_mode(update: Update, context: ContextTypes.DEFAULT_TYPE)
         set_user_state(context, 'main')
         await show_admin_main(update)
 
-# ================== РЕЖИМ БАРИСТЫ ==================
+# ================== РЕЖИМ БАРИСТЫ (BARISTA MODE) ==================
 async def show_barista_main(update: Update):
     user = update.effective_user
     role = get_user_role(user.id, user.username)
@@ -340,35 +426,54 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
         {'filled': '🧋', 'empty': '⚪', 'gift': '🟠'},
     ]
 
-# ВСЕГДА создаем новые настройки для нового клиента
-    context.user_data['customer_style'] = random.choice(styles)
-    context.user_data['customer_emoji'] = get_random_user_emoji()
+    # ВСЕГДА создаем новые настройки для нового клиента
+    # Для баристы: используем сохраненный стиль клиента ИЛИ создаем новый если его нет
+    user_saved_style_index = db.get_user_style(customer_id)
+    if user_saved_style_index is not None:
+        # Используем сохраненный стиль клиента
+        style_index = user_saved_style_index
+        style = styles[style_index]
+    else:
+        # Создаем случайный стиль и сохраняем его
+        style_index = random.randint(0, len(styles) - 1)
+        style = styles[style_index]
+        db.save_user_style(customer_id, style_index)
 
-    style = context.user_data['customer_style']
-    user_emoji = context.user_data['customer_emoji']
-    
-    style = context.user_data['customer_style']
-    user_emoji = context.user_data['customer_emoji']
-    
-    # Получаем данные клиента
-    purchases = db.get_user_stats(customer_id)
-    if purchases is None:
-        await update.message.reply_text("❌ Клиент не найден в базе данных.")
-        return
-    
+    # Получаем данные клиента ОДИН РАЗ
     cursor = db.conn.cursor()
     cursor.execute('SELECT username, first_name, last_name, phone FROM users WHERE user_id = ?', (customer_id,))
     user_info = cursor.fetchone()
     
-    username = user_info[0] if user_info and user_info[0] else "Не указан"
-    first_name = user_info[1] if user_info and user_info[1] else ""
-    last_name = user_info[2] if user_info and user_info[2] else ""
-    phone = user_info[3] if user_info and user_info[3] else "Не указан"
+    if not user_info:
+        await update.message.reply_text("❌ Клиент не найден в базе данных.")
+        return
     
+    # Извлекаем данные клиента
+    customer_username = user_info[0] if user_info[0] else "Не указан"
+    first_name = user_info[1] if user_info[1] else ""
+    last_name = user_info[2] if user_info[2] else ""
+    phone = user_info[3] if user_info[3] else None
+    
+    # ПРАВИЛЬНОЕ определение эмодзи: ▪️ если есть username (клиент с QR), ▫️ если нет
+    if customer_username and customer_username != "Не указан" and customer_username != "None":
+        user_emoji = "▪️"  # Клиент с QR
+    else:
+        user_emoji = "▫️"  # Клиент без QR (добавлен по номеру)
+
+    # Сохраняем в context для текущей сессии
+    context.user_data['customer_style'] = style
+    context.user_data['customer_style_index'] = style_index
+    
+    style = context.user_data['customer_style']
+    
+    # Получаем количество покупок
+    purchases = db.get_user_stats(customer_id)
+    
+    # Формируем имя для отображения
     clean_last_name = last_name if last_name and last_name != "None" else ""
     user_display_name = f"{first_name} {clean_last_name}".strip()
     if not user_display_name:
-        user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
+        user_display_name = f"@{customer_username}" if customer_username and customer_username != "Не указан" else "Гость"
     
     promotion = db.get_promotion()
     required = promotion[2] if promotion else 7
@@ -376,20 +481,24 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     # Создаем визуальный прогресс-бар
     progress_bar = get_coffee_progress(purchases, required, style)
 
-    # Улучшенная карточка клиента
-    if purchases >= required:
+    # Формируем текст карточки с номером телефона (если он есть)
+    if phone:
+        phone_display = f"📞 {phone}"
+    else:
+        phone_display = "📞"
 
-        text = f"{user_emoji} {user_display_name}\n📞 {phone}\n\n{progress_bar}\n\n🎉 Бесплатный напиток!"
+    if purchases >= required:
+        text = f"{user_emoji} {user_display_name}\n{phone_display}\n\n{progress_bar}\n\n🎉 Бесплатный напиток!"
     else:
         remaining = required - purchases - 1
-        
         if remaining == 0:
             status_text = "Следующий 🎁"
         else:
-            status_text = f"Ещё {remaining}" 
-    
+            status_text = f"{remaining}"
+
         text = f"""
 {user_emoji} {user_display_name}
+{phone_display}
 
 {progress_bar}
 
@@ -402,8 +511,7 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     # ✅ АВТОМАТИЧЕСКИ ОБНОВЛЯЕМ КЛАВИАТУРУ
     keyboard = [
         [KeyboardButton("✔ Начислить")],
-        [KeyboardButton("📲 Добавить номер")],
-        [KeyboardButton("🧾 Инфо")]
+        [KeyboardButton("📲 Добавить номер")]
     ]
     
     if role == 'admin':
@@ -412,10 +520,13 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     # Отправляем сообщение с информацией о клиенте и ОБНОВЛЕННОЙ клавиатурой
-    await update.message.reply_text(text, reply_markup=reply_markup)    
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_markup
+    )
     # Бариста теперь может нажать ✔ Начислить для начисления покупки
 
-        # Устанавливаем состояние для баристы или админа
+    # Устанавливаем состояние для баристы или админа
     user_id = update.effective_user.id
     username = update.effective_user.username
     role = get_user_role(user_id, username)
@@ -424,13 +535,53 @@ async def process_customer_scan(update: Update, context: ContextTypes.DEFAULT_TY
         set_user_state(context, 'barista_mode')
     elif role == 'admin':
         set_user_state(context, 'barista_mode')  # админ в режиме баристы
-    
-    print(f"🟢 DEBUG: Установлено состояние '{get_user_state(context)}' для клиента {customer_id}")
 
 async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, customer_id: int):
     """Обработка начисления покупки по кнопке ✔ Начислить"""
-    print(f"🔴 DEBUG process_coffee_purchase: начали, customer_id={customer_id}")
-    styles = [
+    
+    # Получаем ВСЕ данные клиента ОДИН РАЗ
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        await update.message.reply_text("❌ Клиент не найден")
+        return
+    
+    username = user_info[0] if user_info[0] else None
+    first_name = user_info[1] if user_info[1] else ""
+    last_name = user_info[2] if user_info[2] else ""
+    
+    # Определяем эмодзи: ▪️ если есть username (клиент с QR), ▫️ если нет
+    if username and username != "Не указан" and username != "None":
+        user_emoji = "▪️"  # Клиент с QR
+    else:
+        user_emoji = "▫️"  # Клиент без QR (добавлен по номеру)
+    
+    # Формируем имя для отображения
+    clean_last_name = last_name if last_name and last_name != "None" else ""
+    user_display_name = f"{first_name} {clean_last_name}".strip()
+    if not user_display_name:
+        user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
+    
+    # Получаем текущее количество покупок ДО начисления
+    current_purchases = db.get_user_stats(customer_id)
+    promotion = db.get_promotion()
+    required = promotion[2] if promotion else 7
+
+    # Начисляем покупку
+    new_count = db.update_user_purchases(customer_id, 1)
+
+    # Надпись показываем когда было 5 покупок (стало 6)
+    show_gift_message = (current_purchases == required - 2)  # 5 покупок при required=7
+    
+    # Анимация подарка когда было 6 покупок (стало 0) - 7-я покупка
+    show_gift_animation = (current_purchases == required - 1)  # 6 покупок при required=7
+
+    # Прогресс-бар
+    user_saved_style_index = db.get_user_style(customer_id)
+
+    all_styles = [
         {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
         {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
         {'filled': '☕', 'empty': '⚪', 'gift': '🟤'},
@@ -441,66 +592,39 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
         {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
         {'filled': '🧋', 'empty': '⚪', 'gift': '🟠'},
     ]
-    
-    style = context.user_data.get('customer_style', random.choice(styles))
-    user_emoji = context.user_data.get('customer_emoji', get_random_user_emoji())
-    user_id = update.effective_user.id
-    
-    # Получаем текущее количество покупок ДО начисления
-    current_purchases = db.get_user_stats(customer_id)
-    promotion = db.get_promotion()
-    required = promotion[2] if promotion else 7
 
-    print(f"🟡 DEBUG: ДО начисления - current_purchases={current_purchases}, required={required}")
-
-    # Начисляем покупку
-    new_count = db.update_user_purchases(customer_id, 1)
-
-    print(f"🟡 DEBUG: ПОСЛЕ начисления - new_count={new_count}")
-
-    # Получаем данные клиента
-    cursor = db.conn.cursor()
-    cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
-    user_info = cursor.fetchone()
-
-    username = user_info[0] if user_info and user_info[0] else "Не указан"
-    first_name = user_info[1] if user_info and user_info[1] else ""
-    last_name = user_info[2] if user_info and user_info[2] else ""
-
-# ПРИОРИТЕТ: Имя Фамилия > username > Гость
-    clean_last_name = last_name if last_name and last_name != "None" else ""
-    user_display_name = f"{first_name} {clean_last_name}".strip()
-    if not user_display_name:
-        user_display_name = f"@{username}" if username and username != "Не указан" else "Гость"
-
-    # Надпись показываем когда было 5 покупок (стало 6)
-    show_gift_message = (current_purchases == required - 2)  # 5 покупок при required=7
-    
-    # Анимация подарка когда было 6 покупок (стало 0) - 7-я покупка
-    show_gift_animation = (current_purchases == required - 1)  # 6 покупок при required=7
-    
-    print(f"🟡 DEBUG: show_gift_message={show_gift_message} (current_purchases={current_purchases} == required-2={required-2})")
-    print(f"🟡 DEBUG: show_gift_animation={show_gift_animation} (current_purchases={current_purchases} == required-1={required-1})")
-
-    # Прогресс-бар
-    progress_bar = get_coffee_progress(new_count, required, style)
-    
-    # Формируем сообщение для баристы
-    # Формируем сообщение для баристы
-    if show_gift_message:
-        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий напиток в подарок"
+    # Используем сохраненный стиль ИЛИ текущий из context
+    if user_saved_style_index is not None:
+        saved_style = all_styles[user_saved_style_index]
     else:
-        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    "
-        print(f"🟢 DEBUG: НЕ показываем надпись")
+        # Если стиль не сохранен, используем случайный и сохраняем
+        style_index = random.randint(0, len(all_styles) - 1)
+        db.save_user_style(customer_id, style_index)
+        saved_style = all_styles[style_index]
+
+    # Прогресс-бар с сохраненным стилем
+    progress_bar = get_coffee_progress(new_count, required, saved_style)
+    
+    # Формируем сообщение для баристы
+# Формируем сообщение для баристы
+    if show_gift_message:
+        text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    \n\nСледующий 🎁"
+    else:
+        # Добавляем цифру оставшихся покупок
+        remaining = required - new_count - 1
+        if remaining > 0:
+            text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    \n\n{remaining}"
+        else:
+            text = f"{user_emoji} {user_display_name}\n\n{progress_bar}            ☑ new    "
 
     # Отправляем сообщение баристе
     # СНАЧАЛА стикер на 3 секунды
     sticker_msg = await update.message.reply_sticker("CAACAgIAAxkBAAIXcmkJz75zJHyaWzadj8tpXsWv8PTsAAKgkwACe69JSNZ_88TxnRpuNgQ")
 
-# ПОТОМ сообщение с прогресс-баром
+    # ПОТОМ сообщение с прогресс-баром
     await update.message.reply_text(text)
 
-# Удаляем стикер через 3 секунды
+    # Удаляем стикер через 3 секунды
     async def delete_sticker_later():
         await asyncio.sleep(3)
         try:
@@ -512,7 +636,6 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     
     # Анимация подарка на 7-й покупке (когда счетчик сбрасывается)
     if show_gift_animation:
-        print(f"🎁 DEBUG: Показываем анимацию подарка (7-я покупка)")
         gift_msg = await update.message.reply_text("🎁")
         await asyncio.sleep(5)
         try:
@@ -525,12 +648,10 @@ async def process_coffee_purchase(update: Update, context: ContextTypes.DEFAULT_
     
     # ВАЖНО: НЕ меняем состояние! Остаемся в том же режиме баристы
     context.user_data['current_customer'] = customer_id
-    
-    print(f"🟢 DEBUG process_coffee_purchase: закончили")
 
 async def show_admin_main(update: Update):
     text = """
-👑 Панель администратора CoffeeRina
+👑 Панель админа
     """
     if update.message:
         await update.message.reply_text(text, reply_markup=get_admin_main_keyboard())
@@ -546,9 +667,8 @@ async def handle_admin_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📒 Посетители":
         set_user_state(context, 'admin_customers')
         await show_all_customers(update, context)
-    elif text == "📣 Рассылка":  # ← ИЗМЕНИТЕ ЭТОТ БЛОК
+    elif text == "📣 Рассылка":
         set_user_state(context, 'broadcast_message')
-        # НЕ УБИРАЕМ КЛАВИАТУРУ, просто меняем состояние
         await update.message.reply_text(
             "✍ Введите текст для рассылки:\n\n"
             "!c - только клиентам\n"
@@ -559,21 +679,17 @@ async def handle_admin_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_state(context, 'admin_settings')
         await show_admin_settings(update)
 
-# ================== РАССЫЛКА ==================
+# ================== РАССЫЛКА (BROADCAST) ==================
 async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текста рассылки"""
-    print(f"🎯 DEBUG handle_broadcast_message: text='{update.message.text}', state='{get_user_state(context)}'")
     
     if get_user_state(context) != 'broadcast_message':
-        print("❌ DEBUG: Не в состоянии broadcast_message")
         return
     
     text = update.message.text
-    print(f"🟢 DEBUG: Обрабатываем текст рассылки: '{text}'")
     
     # ЕСЛИ это кнопка - выходим из состояния рассылки
     if text in ["📙 Баристы", "📒 Посетители", "📣 Рассылка", "⚙️ Опции", "🔙 Назад"]:
-        print("🔴 DEBUG: Это кнопка, выходим из рассылки")
         set_user_state(context, 'main')
         await handle_admin_main(update, context)
         return
@@ -589,11 +705,8 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
     # Сохраняем текст для отправки
     context.user_data['broadcast_text'] = broadcast_text
     context.user_data['admin_chat_id'] = user_id
-    
-    print(f"💾 DEBUG: Сохранили broadcast_text: '{broadcast_text}'")
-    
+
     # ПРЕДПРОСМОТР с инлайн кнопками
-# ПРЕДПРОСМОТР с инлайн кнопками
     target_info = ""
     if broadcast_text.startswith('!c '):
         target_info = " (только клиентам)"
@@ -611,21 +724,16 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
         ]
     ]
     
-    print("🔄 DEBUG: Показываем превью...")
-    
     try:
         preview_msg = await update.message.reply_text(
             preview_text,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        print("✅ DEBUG: Превью показано успешно")
     except Exception as e:
-        print(f"❌ DEBUG: Ошибка при показе превью: {e}")
         return
     
     context.user_data['preview_msg_id'] = preview_msg.message_id
     set_user_state(context, 'broadcast_preview')
-    print("🔄 DEBUG: Перешли в состояние broadcast_preview")
 
 
 async def handle_broadcast_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -784,7 +892,7 @@ async def show_barista_management(update: Update):
 
     if baristas:
         for barista in baristas:
-            username = barista[0]          # ← только username
+            username = barista[0]
             text += f"@{username}\n"
     else:
         text += "Баристы не добавлены"
@@ -797,12 +905,12 @@ async def show_customer_management(update: Update):
     text = "📒 Посетители\n\nИспользуйте кнопки ниже для поиска и управления клиентами"
     await update.message.reply_text(text, reply_markup=get_admin_customers_keyboard())
 
-async def show_all_customers(update: Update, context: ContextTypes.DEFAULT_TYPE = None):
-    print('[DEBUG] show_all_customers вызвана')
-    
-    # МЕНЯЕМ СОСТОЯНИЕ НА admin_customers
+async def show_all_customers(update: Update, context: ContextTypes.DEFAULT_TYPE = None, page: int = 0):
+    """Показывает список пользователей с пагинацией"""   
     if context:
         set_user_state(context, 'admin_customers')
+        # Сохраняем текущую страницу
+        context.user_data['customers_page'] = page
     
     users = db.get_all_users()
     promotion = db.get_promotion()
@@ -810,47 +918,91 @@ async def show_all_customers(update: Update, context: ContextTypes.DEFAULT_TYPE 
 
     if not users:
         text = "📂 Клиентов пока нет."
-    else:
-        text = "📖 Список пользователей:\n\n"
-        for u in users:
-            user_id, username, first_name, last_name, purchases, phone = u
-            print(f"[DEBUG] user_id={user_id}, username='{username}', first_name='{first_name}', last_name='{last_name}', phone='{phone}'")
-            
-            # Формируем информацию о пользователе
-            user_info_parts = []
-            
-            # 1. Имя (если есть)
-            clean_last_name = last_name if last_name and last_name != "None" else ""
-            full_name = f"{first_name or ''} {clean_last_name}".strip()
-            if full_name:
-                user_info_parts.append(f"{full_name}")
-            
-            # 2. @username (если есть и не "Не указан")
-            if username and username != "Не указан":
-                user_info_parts.append(f"@{username}")
-            
-            # 3. Телефон (если есть)
-            if phone:
-                user_info_parts.append(f"{phone}")
-            
-            # 4. ID (для отладки/резерв)
-            if not user_info_parts:
-                user_info_parts.append(f"ID: {user_id}")
-            
-            # Объединяем все части
-            user_display = " • ".join(user_info_parts)
-            
-            # Добавляем счетчик покупок
-            text += f"{user_display} — {purchases}/{required}\n"
-            
-    if users:
-        # Добавляем инструкцию после списка
-        text += "\n\n🔍 Для поиска отправьте:\n• Номер телефона (10 цифр)\n• Последние 4 цифры номера\n• @username пользователя"
+        await update.message.reply_text(text, reply_markup=get_admin_customers_keyboard_after_list())
+        return
     
-    await update.message.reply_text(
-        text,
-        reply_markup=get_admin_customers_keyboard_after_list()
-    )
+    # Настройки пагинации
+    PER_PAGE = 20
+    total_pages = (len(users) + PER_PAGE - 1) // PER_PAGE  # Округление вверх
+    
+    # Проверяем границы
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    # Получаем пользователей для текущей страницы
+    start_idx = page * PER_PAGE
+    end_idx = min(start_idx + PER_PAGE, len(users))
+    page_users = users[start_idx:end_idx]
+    
+    # Формируем текст
+    text = f"📖 Страница {page + 1}/{total_pages} | Всего: {len(users)} пользователей\n\n"
+    
+    for idx, u in enumerate(page_users, start=start_idx + 1):
+        user_id, username, first_name, last_name, purchases, phone = u
+        
+        # Формируем строку пользователя
+        user_parts = []
+        
+        # Имя
+        clean_last_name = last_name if last_name and last_name != "None" else ""
+        full_name = f"{first_name or ''} {clean_last_name}".strip()
+        if full_name:
+            user_parts.append(f"{full_name}")
+        
+        # @username
+        if username and username != "Не указан":
+            user_parts.append(f"@{username}")
+        
+        # Номер (скрытый)
+        if phone:
+            masked_phone = f"---{phone[-4:]}" if len(phone) >= 4 else "---"
+            user_parts.append(masked_phone)
+        
+        # Если ничего нет - ID
+        if not user_parts:
+            user_parts.append(f"ID:{user_id}")
+        
+        # Собираем строку
+        user_str = " • ".join(user_parts)
+        
+        # Добавляем прогресс со статусом
+        if purchases >= required:
+            progress = f"{purchases}/{required} 🎉"
+        elif purchases == required - 1:
+            progress = f"{purchases}/{required} ⭐"
+        else:
+            progress = f"{purchases}/{required}"
+        
+        text += f"{idx}. 👤 {user_str} — {progress}\n"
+    
+    # Инлайн-кнопки для пагинации
+    keyboard = []
+    
+    # Кнопки навигации
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("<", callback_data=f"cust_page_{page-1}"))
+    
+    nav_buttons.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+    
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton(">", callback_data=f"cust_page_{page+1}"))
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    
+    # Кнопка поиска
+    keyboard.append([InlineKeyboardButton("🔍 Поиск пользователя", callback_data="cust_search")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Отправляем или редактируем сообщение
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
 
 async def show_admin_settings(update: Update):
     promotion = db.get_promotion()
@@ -878,20 +1030,14 @@ async def handle_admin_barista_management(update: Update, context: ContextTypes.
 
 async def handle_admin_customer_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    print(f"DEBUG admin_customers text: '{text}'")
     
+    # Всегда обрабатываем "Назад"
     if text == "🔙 Назад":
         set_user_state(context, 'main')
         await show_admin_main(update)
         return
     
-    # Если только что вошли в раздел "Пользователи" - показываем список
-    if text == "📒 Посетители":
-        await show_all_customers(update, context)
-        return
-    
-    # Если админ в разделе "Пользователи" ввел что-то (не кнопку "Назад")
-    # Это может быть: номер (10 цифр), последние 4 цифры, @username, или номер+имя
+    # ВСЕ остальные сообщения в этом состоянии - поисковые запросы
     await handle_admin_customer_search(update, context, text)
 
 async def handle_admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -902,7 +1048,7 @@ async def handle_admin_settings(update: Update, context: ContextTypes.DEFAULT_TY
         await show_promotion_management(update)
     elif text == "🤎 Я гость":
         set_user_state(context, 'client_mode')
-        await show_client_main(update, context)  # ← ДОБАВЬТЕ context
+        await show_client_main(update, context)
     elif text == "🐾 Я бариста":
         set_user_state(context, 'barista_mode')
         await show_barista_main(update)
@@ -925,11 +1071,9 @@ async def show_promotion_management(update: Update):
 
 async def handle_promotion_management(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    print(f"[DEBUG] promotion_management текст кнопки: '{text}'")
 
     # --- новое простое условие ---
     if "Условие" in text:
-        print("[DEBUG] нажата кнопка Условие")
         set_user_state(context, 'changing_promotion_condition')
         await update.message.reply_text("Введите новое количество покупок для акции (например: 7):")
         return
@@ -946,7 +1090,7 @@ async def handle_promotion_management(update: Update, context: ContextTypes.DEFA
         set_user_state(context, 'admin_settings')
         await show_admin_settings(update)
 
-# ================== ОБРАБОТКА ПОИСКА КЛИЕНТА ==================
+# ================== ПОИСК КЛИЕНТА (CUSTOMER SEARCH) ==================
 async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_TYPE, search_query: str):
     """Обработка поиска клиента по @username"""
     
@@ -968,13 +1112,11 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
         required = promotion[2] if promotion else 7
         
         # Формируем красивое имя
-# Приоритет: Имя Фамилия > username > Гость
         clean_last_name = last_name if last_name and last_name != "None" else ""
         user_display_name = f"{first_name} {clean_last_name}".strip()
         if not user_display_name:
             user_display_name = f"@{username}" if username else "Гость"
         
-        # Создаем прогресс-бар
         # Создаем прогресс-бар
         progress_bar = get_coffee_progress(purchases, required)
 
@@ -993,7 +1135,7 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
             if remaining == 0:
                 status_text = "Следующий 🎁"
             else:
-                status_text = f"Ещё {remaining}"
+                status_text = f"{remaining}"
     
             text = f"""
 {user_emoji} {user_display_name}
@@ -1002,7 +1144,6 @@ async def handle_customer_search(update: Update, context: ContextTypes.DEFAULT_T
 
 {status_text}
 """
-        # ← ВСТАВИТЬ СЮДА ↓↓↓
         keyboard = [
             [
                 InlineKeyboardButton("➕ Начислить", callback_data=f"add_{customer_id}"),
@@ -1025,7 +1166,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     
     data = query.data
     
-    # 1. Обработка подтверждения удаления (ДОБАВЬ ЭТО ПЕРВЫМ)
     if data.startswith('confirm_delete_'):
         customer_id = int(data.replace('confirm_delete_', ''))
         
@@ -1053,27 +1193,32 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text(f"❌ Ошибка при удалении пользователя")
         return
     
+    
     elif data.startswith('cancel_delete_'):
         customer_id = int(data.replace('cancel_delete_', ''))
         # Возвращаемся к карточке пользователя
         await show_customer_card_admin(update, context, customer_id)
         return
     
-    # 2. Обработка broadcast
+    elif data.startswith('client_stats_'):
+        customer_id = int(data.replace('client_stats_', ''))
+        # Вызываем тот же функционал, что и для кнопки "Акции"
+        await show_promotion_info_with_context(update, context)
+        return
+    
     if data.startswith('broadcast_'):
         await handle_broadcast_buttons(update, context)
         return
     
-    # 3. Обработка стилей прогресс-бара
     elif data.startswith('style_'):
         # Формат: style_prev_X или style_next_X (X = user_id)
         action, user_id_str = data.split('_')[1], data.split('_')[2]
         user_id = int(user_id_str)
-        
-        # Получаем текущий индекс стиля (если нет - начинаем с 0)
-        style_index = context.user_data.get(f'style_index_{user_id}', 0)
-        
-        # Список всех стилей (должен совпадать с get_coffee_progress)
+
+        # Получаем ТЕКУЩИЙ сохраненный стиль из базы
+        current_style_index = db.get_user_style(user_id)
+
+        # Список всех стилей
         all_styles = [
             {'filled': '🧋', 'empty': '🧊', 'gift': '🧊'},
             {'filled': '☕', 'empty': '🔳', 'gift': '🔲'},
@@ -1085,21 +1230,62 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
             {'filled': '🧋', 'empty': '⚪', 'gift': '🟠'},
         ]
-        
+
         # Меняем индекс
         if action == 'prev':
-            style_index = (style_index - 1) % len(all_styles)
+            new_style_index = (current_style_index - 1) % len(all_styles)
         elif action == 'next':
-            style_index = (style_index + 1) % len(all_styles)
-        
-        # Сохраняем новый индекс
-        context.user_data[f'style_index_{user_id}'] = style_index
-        
+            new_style_index = (current_style_index + 1) % len(all_styles)
+
+        # СОХРАНЯЕМ В БАЗУ НАВСЕГДА
+        db.save_user_style(user_id, new_style_index)
+
         # Показываем обновленный прогресс-бар
-        await show_progress_with_choice(update, context, user_id)
+        await show_progress_with_choice(update, context, user_id, from_promotion=False)
         return
     
-    # 4. Обработка админских действий над пользователем (НОВАЯ СЕКЦИЯ)
+    elif data.startswith('bind_phone_'):
+        user_id = int(data.replace('bind_phone_', ''))
+        
+        # Устанавливаем состояние для привязки номера
+        set_user_state(context, 'setting_phone_from_callback')
+        context.user_data['phone_user_id'] = user_id
+        
+        # Отвечаем на callback (убираем часики)
+        await query.answer()
+        
+        # Отправляем инструкцию
+        await query.message.reply_text(
+            "🖇 Введите ваш номер телефона (без '8') и имя через пробел\n\n"
+            "Пример:\n9996664422 Саша\n\n"
+            "Или нажмите /start для отмены"
+        )
+        return
+    
+    elif data.startswith('cust_page_'):
+        page = int(data.replace('cust_page_', ''))
+        await show_all_customers(update, context, page)
+        return
+    
+    elif data == 'cust_search':
+        await query.answer("Используйте поле ввода для поиска")
+        # Можно показать подсказку
+        await query.edit_message_text(
+            "🔍 Для поиска отправьте в чат:\n"
+            "• Номер телефона (10 цифр)\n"
+            "• Последние 4 цифры номера\n"
+            "• @username пользователя\n\n"
+            "Примеры:\n9996664422\n4422\n@username",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 К списку", callback_data="cust_page_0")]
+            ])
+        )
+        return
+    
+    elif data == 'noop':
+        await query.answer()
+        return
+
     elif data.startswith('admin_'):
         parts = data.split('_')
         if len(parts) < 3:
@@ -1124,7 +1310,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             
         return
     
-    # 5. Обработка начисления/списания покупок (старый код)
     if data.startswith('add_'):
         customer_id = int(data.replace('add_', ''))
         # Логика начисления покупки
@@ -1139,11 +1324,27 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif data == 'back_to_customers':
         set_user_state(context, 'admin_customers')
         await show_customer_management(update)
-# ================== БАЗОВЫЕ ФУНКЦИИ ==================
-async def send_qr_code(update: Update, user_id: int):
+
+# ================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (HELPER FUNCTIONS) ==================
+async def send_qr_code(update: Update, user_id: int, with_buttons: bool = True):
+    """Генерирует и отправляет QR-код с инлайн-кнопками"""
     qr_image = generate_qr_code(user_id)
     caption = "📱 Ваш персональный QR-код\n\nПокажите его баристе при заказе"
-    await update.message.reply_photo(photo=qr_image, caption=caption)
+    
+    if with_buttons:
+        # Создаем инлайн-кнопки (ИЗМЕНИЛИ "Профиль" на "Статус")
+        keyboard = [
+            [InlineKeyboardButton("🪪 Прогресс-бар", callback_data=f"client_stats_{user_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_photo(
+            photo=qr_image, 
+            caption=caption,
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_photo(photo=qr_image, caption=caption)
 
 async def show_user_status(update: Update, user_id: int):
     purchases = db.get_user_stats(user_id)
@@ -1162,7 +1363,6 @@ async def show_user_status(update: Update, user_id: int):
     await update.message.reply_text(text)
 
 async def show_promotion_info(update: Update):
-    print(f"🔵 DEBUG show_promotion_info: вызвана")
     user = update.effective_user
     user_id = user.id
     
@@ -1211,7 +1411,7 @@ async def show_promotion_info(update: Update):
         if remaining == 0:
             status_text = "Следующий 🎁"
         else:
-            status_text = f"Ещё {remaining}"
+            status_text = f"{remaining}"
         text = f"{user_display_name}\n\n{progress_bar}\n\n{status_text}"
     
     # Показываем без кнопок для начала
@@ -1227,47 +1427,45 @@ async def show_promotion_info(update: Update):
     
     asyncio.create_task(delete_promotion_message())
 
-async def show_barista_promotion_info(update: Update):
-    print(f"🔴 DEBUG: show_barista_promotion_info вызвана")
-    # Только одно сообщение - инструкция
-    instruction_text = """
-Акция 🎁 7-й напиток в подарок
-
-Начисляем +1 за покупку напитка или десерта
-1 чек = 1 '✔ Начислить'
-
-Как найти 🔎
-
-📸 по QR:
-- Пользователь показывает QR
-- Фотографируете QR и отправляете в этот чат
-- Карточка пользователя
-- Кнопку '✔ Начислить'
-
-📞 по номеру:
-- Посетитель говорит номер
-- Отправляете номер в этот чат в формате: 9998887766 Олег
-- Карточка посетителя
-- Кнопку '✔ Начислить'
-
-Как добавить по номеру 📲
-
-- Кнопку '📲 Добавить номер'
-- Отправь в чат НОМЕР ИМЯ как тут: 9996664422 Саша
-- Гость добавлен, карточка посетителя
-- Кнопку '✔ Начислить'
-
-Перезапуск бота - команда /start
-    """
+async def show_progress_with_choice(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, from_promotion=False):
+    """Показывает прогресс-бар с кнопками выбора стиля
+    from_promotion: True если вызов из акции (нужно новое сообщение), False если редактирование"""
     
-    # Отправляем только одно сообщение с инструкцией
-    await update.message.reply_text(instruction_text)
-    print(f"🟢 DEBUG: сообщение отправлено")
-
-async def show_progress_with_choice(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Показывает прогресс-бар с кнопками выбора стиля"""
+    if update.callback_query and not from_promotion:
+        # Вызов из инлайн-кнопки (редактируем существующее)
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        edit_method = query.edit_message_text
+        send_new = False
+    else:
+        # Вызов из акции или обычного сообщения (отправляем новое)
+        if update.callback_query:
+            query = update.callback_query
+            chat_id = query.message.chat_id
+        elif update.message:
+            chat_id = update.message.chat_id
+        else:
+            print("❌ Ошибка: нет сообщения или callback для ответа")
+            return
+        edit_method = None
+        send_new = True
+    
     # Получаем данные пользователя
-    purchases = db.get_user_stats(user_id)
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT purchases_count, first_name, last_name, phone, username FROM users WHERE user_id = ?', (user_id,))
+    user_info = cursor.fetchone()
+    
+    if not user_info:
+        print(f"❌ Пользователь {user_id} не найден")
+        return
+    
+    purchases = user_info[0] if user_info else 0
+    first_name = user_info[1] if user_info else ""
+    last_name = user_info[2] if user_info else ""
+    phone = user_info[3] if user_info else None
+    username = user_info[4] if user_info else None
+    
     promotion = db.get_promotion()
     required = promotion[2] if promotion else 7
     
@@ -1283,64 +1481,116 @@ async def show_progress_with_choice(update: Update, context: ContextTypes.DEFAUL
         {'filled': '🟣', 'empty': '⚪', 'gift': '⬛'},
         {'filled': '🧋', 'empty': '⚪', 'gift': '🟠'},
     ]
-    
-    style_index = context.user_data.get(f'style_index_{user_id}', 0)
+
+    # Получаем СОХРАНЕННЫЙ стиль из базы данных
+    style_index = db.get_user_style(user_id)
     style = all_styles[style_index]
     
     # Создаем прогресс-бар с ВЫБРАННЫМ стилем
     progress_bar = get_coffee_progress(purchases, required, style)
     
-    # Получаем имя для отображения
-    cursor = db.conn.cursor()
-    cursor.execute('SELECT first_name, last_name FROM users WHERE user_id = ?', (user_id,))
-    user_info = cursor.fetchone()
-    
-    first_name = user_info[0] if user_info and user_info[0] else ""
-    last_name = user_info[1] if user_info and user_info[1] else ""
-    
+    # Формируем имя для отображения
     clean_last_name = last_name if last_name and last_name != "None" else ""
     user_display_name = f"{first_name} {clean_last_name}".strip()
     if not user_display_name:
-        user_display_name = f"@{update.effective_user.username}" if update.effective_user.username else "Гость"
+        user_display_name = f"@{username}" if username else "Гость"
+    
+    # Определяем эмодзи: ▪️ если есть username (клиент с QR), ▫️ если нет (добавлен по номеру)
+    if username and username != "Не указан" and username != "None":
+        user_emoji = "▪️"  # Клиент с QR
+    else:
+        user_emoji = "▫️"  # Клиент без QR (добавлен по номеру)
+    
+    # Форматируем номер телефона (если есть)
+    if phone:
+        # Форматируем номер: первые 6 цифр + [последние 4] в скрытом формате
+        phone_display = f"📞 {phone}"
+    else:
+        phone_display = "📞"
     
     # Текст с прогресс-баром
     if purchases >= required:
-        text = f"{user_display_name}\n\n{progress_bar}\n\n🎉 Бесплатный напиток доступен!"
+        text = f"{user_emoji} {user_display_name}\n{phone_display}\n\n{progress_bar}\n\n🎉 Бесплатный напиток доступен!"
     else:
         remaining = required - purchases - 1
         if remaining == 0:
             status_text = "Следующий 🎁"
         else:
-            status_text = f"Ещё {remaining}"
-        text = f"{user_display_name}\n\n{progress_bar}\n\n{status_text}"
+            status_text = f"{remaining}"
+        text = f"{user_emoji} {user_display_name}\n{phone_display}\n\n{progress_bar}\n\n{status_text}"
     
-    # Инлайн-кнопки для переключения стилей
-    keyboard = [
-        [
-            InlineKeyboardButton("←", callback_data=f"style_prev_{user_id}"),
-            InlineKeyboardButton(f"Стиль {style_index + 1}/{len(all_styles)}", callback_data="noop"),
-            InlineKeyboardButton("→", callback_data=f"style_next_{user_id}")
-        ]
-    ]
+    # Инлайн-кнопки для переключения стилей и привязки номера
+    keyboard_buttons = []
     
-    # Редактируем существующее сообщение или отправляем новое
+    # Строка 1: Кнопки стилей
+    keyboard_buttons.append([
+        InlineKeyboardButton("<", callback_data=f"style_prev_{user_id}"),
+        InlineKeyboardButton(f"{style_index + 1}/{len(all_styles)}", callback_data="noop"),
+        InlineKeyboardButton(">", callback_data=f"style_next_{user_id}")
+    ])
+    
+    # Строка 2: Кнопка привязки/изменения номера
+    if phone:
+        phone_button_text = "📞 Изменить номер"
+    else:
+        phone_button_text = "📞 Привязать номер"
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton(phone_button_text, callback_data=f"bind_phone_{user_id}")
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+    
+    # Отправляем или редактируем сообщение
     try:
-        await update.callback_query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except:
-        # Если это новый вызов (не callback)
-        await update.message.reply_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        if not send_new and edit_method:
+            # Редактируем существующее сообщение (callback смены стиля)
+            await edit_method(
+                text,
+                reply_markup=reply_markup
+            )
+        else:
+            # Отправляем новое сообщение (вызов из акции или обычный)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup
+            )
+
+    except Exception as e:
+        print(f"❌ Ошибка при показе прогресс-бара: {e}")
+        # Пробуем отправить без форматирования
+        try:
+            if not send_new and edit_method:
+                await edit_method(text, reply_markup=reply_markup)
+            else:
+                await context.bot.send_message(chat_id, text, reply_markup=reply_markup)
+        except Exception as e2:
+            print(f"❌ Критическая ошибка: {e2}")
 
 async def show_promotion_info_with_context(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает акцию и прогресс-бар с выбором стиля (с context)"""
-    print(f"🔵 DEBUG show_promotion_info_with_context: вызвана")
+    
     user = update.effective_user
     user_id = user.id
+    
+    # Определяем, откуда пришел вызов: из сообщения или callback
+    if update.message:
+        # Вызов из обычного сообщения
+        chat_id = update.message.chat_id
+        reply_method = update.message.reply_text
+        is_callback = False
+    elif update.callback_query:
+        # Вызов из инлайн-кнопки
+        query = update.callback_query
+        chat_id = query.message.chat_id
+        reply_method = query.message.reply_text
+        is_callback = True
+        # Отвечаем на callback, чтобы убрать "часики" на кнопке
+        await query.answer()
+    else:
+        print("❌ Ошибка: не могу определить источник вызова")
+        return
     
     # Отправляем описание акции
     promotion = db.get_promotion()
@@ -1352,24 +1602,38 @@ async def show_promotion_info_with_context(update: Update, context: ContextTypes
     else:
         promotion_text = "Акция ещё не настроена"
     
-    promotion_msg = await update.message.reply_text(promotion_text)
+    try:
+        # Используем правильный метод для отправки
+        promotion_msg = await reply_method(promotion_text)
+        message_id = promotion_msg.message_id
+    except Exception as e:
+        print(f"❌ Ошибка отправки сообщения: {e}")
+        # Если не получилось через reply_method, попробуем напрямую
+        try:
+            promotion_msg = await context.bot.send_message(chat_id, promotion_text)
+            message_id = promotion_msg.message_id
+        except Exception as e2:
+            print(f"❌ Ошибка при прямом отправлении: {e2}")
+            return
     
     # Ждем 2 секунды
     await asyncio.sleep(2)
     
-    # Теперь можно вызвать функцию с кнопками
-    await show_progress_with_choice(update, context, user_id)
+    # Теперь показываем прогресс-бар с кнопками
+    # Передаем информацию о том, что это вызов из акции (нужно новое сообщение)
+    await show_progress_with_choice(update, context, user_id, from_promotion=True)
     
     # Удаляем сообщение об акции через 5 секунд
     async def delete_promotion_message():
         await asyncio.sleep(5)
         try:
-            await promotion_msg.delete()
+            await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
         except Exception:
-            pass
+            pass  # Игнорируем ошибки удаления
     
     asyncio.create_task(delete_promotion_message())
-# ================== ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ==================
+
+# ================== ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ (MAIN MESSAGE HANDLER) ==================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_user_state(context)
     text = update.message.text
@@ -1377,16 +1641,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username
         
     role = get_user_role(user_id, username)
-    print(f"🔴 DEBUG ВХОД: text='{text}', state='{state}', role='{role}'")
 
     # ✅ ПЕРЕМЕСТИ ЭТУ ПРОВЕРКУ СЮДА - САМОЕ ПЕРВОЕ!
     if state == 'broadcast_message':
-        print(f"🟢 DEBUG: Передаем в handle_broadcast_message: '{text}'")
         await handle_broadcast_message(update, context)
         return
 
-    # ✅ ДОБАВЬ ЭТОТ БЛОК ДЛЯ ОБЫЧНЫХ БАРИСТ В СОСТОЯНИИ MAIN
-# ✅ ДОБАВЬ ЭТОТ БЛОК ДЛЯ ОБЫЧНЫХ БАРИСТ В СОСТОЯНИИ MAIN
     if role == 'barista' and state == 'main':
         if text == "📲 Добавить номер":
             set_user_state(context, 'adding_customer')
@@ -1399,11 +1659,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
             return
-        elif text == "🧾 Инфо":
-            await show_barista_promotion_info(update)
-            return
 
-        # ⭐⭐⭐ ДОБАВЛЯЕМ ПОИСК ПО НОМЕРУ ДЛЯ ОБЫЧНЫХ БАРИСТ ⭐⭐⭐
         # Поиск по 4 цифрам
         elif text.isdigit() and len(text) == 4:
             results = db.find_user_by_phone_last4(text)
@@ -1489,7 +1745,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Если обычный бариста в main состоянии нажал другую кнопку - показываем меню баристы
-        elif text in ["📲 Добавить номер", "✔ Начислить", "🧾 Инфо"]:
+        elif text in ["📲 Добавить номер", "✔ Начислить"]:
             # Эти кнопки уже обработаны выше
             pass
         else:
@@ -1523,7 +1779,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data.pop('multiple_customers', None)
                 context.user_data.pop('search_last4', None)
 
-                                # ✅ ДОБАВЬ ЭТО: Устанавливаем правильное состояние
                 user_id = update.effective_user.id
                 username = update.effective_user.username
                 role = get_user_role(user_id, username)
@@ -1532,8 +1787,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     set_user_state(context, 'barista_mode')
                 elif role == 'admin':
                     set_user_state(context, 'barista_mode')
-                
-                print(f"🟢 DEBUG: После выбора из списка установлено состояние '{get_user_state(context)}'")
             else:
                 await update.message.reply_text("❌ Ошибка выбора клиента")
         
@@ -1600,7 +1853,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == 'adding_customer':
         # Обрабатываем ввод номера и имени после нажатия кнопки "📲 Добавить номер"
         
-        # ПРОВЕРЯЕМ СПЕЦИАЛЬНЫЕ КОМАНДЫ ПЕРВЫМИ
         if text == "🔙 Назад":
             set_user_state(context, 'barista_mode')
             await show_barista_main(update)
@@ -1613,17 +1865,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
             return
-        elif text == "🧾 Инфо":
-            set_user_state(context, 'barista_mode')
-            await show_barista_promotion_info(update)  # ← УБРАЛ await show_barista_main(update)
-            return
         elif text == "📲 Добавить номер":
             # Игнорируем повторное нажатие той же кнопки
             return
         
-        # ... остальной код без изменений
-        
-        # Только потом проверяем ввод номера
         if " " in text:
             try:
                 parts = text.split(" ", 1)
@@ -1722,8 +1967,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     elif state == 'broadcast_message':
-    
-        print(f"🟢 DEBUG: Передаем в handle_broadcast_message: '{text}'")
         await handle_broadcast_message(update, context)
         return
     
@@ -1760,9 +2003,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
       
     elif state == 'barista_mode':
-        # 1. ПЕРВЫМИ проверяем КНОПКИ (важные действия)
         if text == "✔ Начислить":
-            print(f"🟡 DEBUG: Обрабатываем +1, текущее состояние: {state}")
             customer_id = context.user_data.get('current_customer')
             if customer_id:
                 await process_coffee_purchase(update, context, customer_id)
@@ -1775,11 +2016,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("💬 Для добавления отправь\nНОМЕР ИМЯ\nв формате как это:\n\n9996664422 Саша")
             return
             
-        elif text == "🧾 Инфо":
-            await show_barista_promotion_info(update)
-            return
-        
-        # 2. ПОТОМ проверяем поисковые запросы
         elif text.isdigit() and len(text) == 4:
             results = db.find_user_by_phone_last4(text)
 
@@ -1843,7 +2079,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await asyncio.sleep(0.5)
                         await process_customer_scan(update, context, new_customer_id)
                     
-                    # ВОЗВРАЩАЕМ В РЕЖИМ БАРИСТЫ ПОСЛЕ ОБРАБОТКИ
                     set_user_state(context, 'barista_mode')
                     
                 else:
@@ -1863,7 +2098,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"❌ Клиент с номером {text} не найден\n\nИспользуйте формат: 9996664422 Саша")
             return
         
-        # 3. ЕСЛИ ничего не подошло - показываем инструкцию
         else:
             await update.message.reply_text("📸 Отправьте фото QR или введите номер имя\nПример: 9996664422 Саша")
             return
@@ -1871,7 +2105,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif state == 'barista_action':
         if text == "✔ Засчитать покупку":
-            # УБРАТЬ УДАЛЕНИЕ: await update.message.delete() - УДАЛИТЕ ЭТУ СТРОКУ
     
             customer_id = context.user_data.get('current_customer')
             if customer_id:
@@ -1879,7 +2112,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
 
-                # ДОБАВИТЬ: получаем имя клиента
                 cursor = db.conn.cursor()
                 cursor.execute('SELECT username, first_name, last_name FROM users WHERE user_id = ?', (customer_id,))
                 user_info = cursor.fetchone()
@@ -1896,15 +2128,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if new_count >= required:
                     text = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\n🎉 Бесплатный напиток активирован!"
                 else:
-                    # ИСПРАВЛЕНИЕ: правильный расчет до бесплатного напитка
                     remaining_for_free = max(0, required - new_count - 1)
                     text = f"{user_display_name}\t\t☑️ + 1\n\n{progress_bar}\n\nДо бесплатного напитка: {remaining_for_free}"
             
-                # ЗАМЕНИТЬ СООБЩЕНИЕ вместо создания нового
                 customer_card_message_id = context.user_data.get('customer_card_message_id')
                 if customer_card_message_id:
                     try:
-                        # УДАЛИТЬ первое сообщение (карточку клиента)
                         await context.bot.delete_message(
                             chat_id=update.effective_chat.id,
                             message_id=customer_card_message_id
@@ -1912,21 +2141,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception:
                         pass  # Игнорируем ошибки удаления
 
-                # СОЗДАЕМ ТУ ЖЕ КЛАВИАТУРУ для обновленного сообщения
                 keyboard = [
                     [KeyboardButton("✔ Засчитать покупку")],
                     [KeyboardButton("🔙 Назад")]
                 ]
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-                # ОТПРАВИТЬ новое сообщение с ТОЙ ЖЕ КЛАВИАТУРОЙ
                 new_message = await update.message.reply_text(text, reply_markup=reply_markup)
                 context.user_data['customer_card_message_id'] = new_message.message_id
             
                 # Уведомляем клиента
                 await notify_customer(context.bot, customer_id, new_count, required)
     
-                # ⚠️ УБРАЛИ возврат в меню баристы - остаемся в barista_action
                 # Теперь можно начислить еще или отправить новый QR
                 return
             else:
@@ -1942,7 +2168,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 promotion = db.get_promotion()
                 required = promotion[2] if promotion else 7
     
-                # ДОБАВЬТЕ ВИЗУАЛЬНЫЙ ПРОГРЕСС И ЗДЕСЬ
                 progress_bar = get_coffee_progress(new_count, required)
                 if new_count >= required:
                     text = f"➖ Покупка отменена!\n\n{progress_bar}\n🎉 Бесплатный напиток доступен!"
@@ -1961,31 +2186,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Ошибка: клиент не найден")
                 
     elif state == 'admin_customer_actions':
-        print(f"[DEBUG] admin_customer_actions text='{update.message.text}'")
         customer_id = context.user_data.get('current_customer')
-        print(f"[DEBUG] current_customer={customer_id}")
 
         promotion = db.get_promotion()
         required = promotion[2] if promotion else 7
 
         if text.startswith("➕"):
-            print("[DEBUG] нажата кнопка ➕")
             new_count = db.update_user_purchases(customer_id, 1)
-            print(f"[DEBUG] новый счётчик = {new_count}")
         elif text.startswith("➖"):
-            print("[DEBUG] нажата кнопка ➖")
             new_count = db.update_user_purchases(customer_id, -1)
-            print(f"[DEBUG] новый счётчик = {new_count}")
         elif text.startswith("🔙"):
-            print("[DEBUG] нажата кнопка 🔙")
             set_user_state(context, 'admin_customers')
             await show_customer_management(update)
             return
         else:
-            print(f"[DEBUG] неизвестная кнопка: '{text}'")
             return
 
-        # ⬇⬇⬇ ОБНОВЛЯЕМ карточку и ОСТАЁМСЯ ТУТ же ⬇⬇⬇
         name = f"@{context.user_data.get('current_username') or 'Гость'}"
         msg = f"✅ Обновлено!\n\n👤 {name}\n📊 Новый счётчик: {new_count}/{required}\n🎯 До подарка: {max(0, required - new_count)}"
         if new_count == 0:
@@ -1997,11 +2213,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [KeyboardButton("🔙 Назад")]
         ]
         await update.message.reply_text(msg, reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        # ⬇⬇⬇ НЕ выходим – остаёмся в admin_customer_actions ⬇⬇⬇
-        # НЕ вызываем set_user_state и show_customer_management
     # Обработка кнопки "Назад" в разных режимах
     if text == "🔙 Назад":
-        if state == 'barista_mode':  # ← ДОБАВЬТЕ ЭТУ СТРОКУ ПЕРВОЙ
+        if state == 'barista_mode':
             set_user_state(context, 'admin_settings')
             await show_admin_settings(update)
             return
@@ -2014,7 +2228,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_admin_main(update)
             return
         elif state == 'admin_customers':
-            if text == "Найти пользователя":  # ← ПРОСТОЙ ТЕКСТ
+            if text == "Найти пользователя":
                 set_user_state(context, 'finding_customer_by_username')
                 await update.message.reply_text("Введите @username пользователя (без @):")
             elif text == "🔍 Найти пользователя":
@@ -2036,21 +2250,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
     
     # Основная обработка по ролям и состояниям
-    # Основная обработка по ролям и состояниям
     if state == 'main':
         if role == 'admin' and state != 'barista_mode':
-        # ← ДОЛЖНЫ БЫТЬ ВСЕ ЭТИ КНОПКИ:
             if text == "📙 Баристы":
                 set_user_state(context, 'admin_barista')
                 await show_barista_management(update)
                 return
-            elif text == "📒 Посетители":
-                print("[DEBUG] нажата кнопка Посетители")
-                set_user_state(context, 'admin_customers')
-                await show_all_customers(update)
-                return
+            
             elif text == "📣 Рассылка":
-                print(f"🟡 DEBUG: Устанавливаем состояние broadcast_message")
                 set_user_state(context, 'broadcast_message')
                 await update.message.reply_text(
                     "✍ Введите текст для рассылки:\n\n"
@@ -2066,37 +2273,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await handle_admin_main(update, context)
 
-        elif role == 'client':  # ← ДОБАВЬ ЭТОТ БЛОК
-            if text == "📱 Мой QR":
+        elif role == 'client':
+            if text == "◾️QR-код":
                 await send_qr_code(update, user_id)
-                return
-            elif text == "🎁 Акции":
-                await show_promotion_info_with_context(update, context)
-                return
-            elif text == "📞 Привязать номер":
-                set_user_state(context, 'setting_phone')
-                await update.message.reply_text("🖇 Введите ваш номер телефона (без '8') и имя через пробел\nПример👇\n\n9996664422 Саша")
                 return
     
     elif state == 'client_mode':
         await handle_client_mode(update, context)
 
-    elif state == 'setting_phone':
-        # ПРОВЕРЯЕМ СПЕЦИАЛЬНЫЕ КОМАНДЫ ПЕРВЫМИ
+    elif state == 'setting_phone' or state == 'setting_phone_from_callback':
         if text == "🔙 Назад":
-            set_user_state(context, 'client_mode')
-            await show_client_main(update, context)
+            if state == 'setting_phone_from_callback':
+                # Возвращаемся к карточке клиента
+                user_id = context.user_data.get('phone_user_id')
+                if user_id:
+                    await show_progress_with_choice(update, context, user_id, from_promotion=True)
+                else:
+                    set_user_state(context, 'client_mode')
+                    await show_client_main(update, context)
+            else:
+                set_user_state(context, 'client_mode')
+                await show_client_main(update, context)
             return
-        elif text == "📱 Мой QR":
+        elif text == "◾️QR-код":
             set_user_state(context, 'client_mode')
             await send_qr_code(update, user_id)
             return
-        elif text == "🎁 Акции":
-            set_user_state(context, 'client_mode')
-            await show_promotion_info_with_context(update, context)
-            return
         
-        # Только потом проверяем ввод номера
         if " " in text:
             try:
                 parts = text.split(" ", 1)
@@ -2104,24 +2307,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name = parts[1].strip()
             
                 if phone.isdigit() and len(phone) == 10:
-                    user_id = update.effective_user.id
+                    # Получаем user_id - либо из контекста, либо из текущего пользователя
+                    if state == 'setting_phone_from_callback':
+                        target_user_id = context.user_data.get('phone_user_id', user_id)
+                    else:
+                        target_user_id = user_id
                 
                     # Обновляем имя и номер
                     cursor = db.conn.cursor()
-                    cursor.execute('UPDATE users SET first_name = ?, phone = ? WHERE user_id = ?', (name, phone, user_id))
+                    cursor.execute('UPDATE users SET first_name = ?, phone = ? WHERE user_id = ?', 
+                                 (name, phone, target_user_id))
                     db.conn.commit()
                 
-                    await update.message.reply_text(f"✅ Ваш профиль обновлен: {name} ({phone}) теперь вы можете баристе называть номер при заказе")
-                    set_user_state(context, 'client_mode')
-                    await show_client_main(update, context)
+                    await update.message.reply_text(
+                        f"✅ Ваш профиль обновлен: {name} ({phone})\n"
+                        f"Теперь вы можете назвать номер баристе при заказе"
+                    )
+                    
+                    if state == 'setting_phone_from_callback':
+                        await show_progress_with_choice(update, context, target_user_id, from_promotion=True)
+                    else:
+                        set_user_state(context, 'client_mode')
+                        await show_client_main(update, context)
+                        
                 else:
                     await update.message.reply_text("❌ Номер должен быть 10 цифр")
                 
             except (ValueError, IndexError):
                 await update.message.reply_text("❌ Формат: номер имя\nПример: 9996664422 Саша")
         else:
-            await update.message.reply_text("❌ Введите номер и имя через пробел\nПример: 9996664422 Саша\n\nИли нажмите '🔙 Назад' для отмены")
-
+            await update.message.reply_text(
+                "❌ Введите номер и имя через пробел\nПример: 9996664422 Саша\n\n"
+                "Или нажмите '🔙 Назад' для отмены"
+            )
+        return
 
     elif state == 'admin_barista':
         await handle_admin_barista_management(update, context)
@@ -2154,9 +2373,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_customer_by_username(update, context)
         return
     else:
-        # Если неизвестная команда, просто игнорируем или показываем текущее меню
-        print(f"⚠️ DEBUG: Неизвестная команда '{text}', состояние: {state}")
-        
         # Обрабатываем кнопки которые попали сюда
         if text == "✔ Начислить" and state == 'barista_mode':
             customer_id = context.user_data.get('current_customer')
@@ -2164,10 +2380,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await process_coffee_purchase(update, context, customer_id)
             else:
                 await update.message.reply_text("❌ Сначала найдите клиента по QR или номеру")
-        elif text == "🧾 Инфо" and state == 'barista_mode':
-            await show_barista_promotion_info(update)
-            return
-        elif text == "📲 Добавить номер" and (state == 'barista_mode' or (state == 'main' and role == 'barista')):  # ← ИЗМЕНИ ЭТУ СТРОКУ
+
+        elif text == "📲 Добавить номер" and (state == 'barista_mode' or (state == 'main' and role == 'barista')):
             set_user_state(context, 'adding_customer')
             await update.message.reply_text("💬 Для добавления отправь\nНОМЕР ИМЯ\nв формате как это:\n\n9996664422 Саша")
         # Вместо перезапуска показываем текущее меню
@@ -2177,7 +2391,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_client_main(update, context)
         elif state == 'main' and role == 'admin':
             await show_admin_main(update)
-        elif state == 'main' and role == 'barista':  # ← ДОБАВЬ ЭТУ СТРОКУ
+        elif state == 'main' and role == 'barista':
             await show_barista_main(update)
 
 async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2197,13 +2411,10 @@ async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка при создании бэкапа:\n{e}")
 
 async def handle_barista_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("DEBUG callback triggered")   # ← должно появиться в консоли
     query = update.callback_query
     await query.answer()
 
     data = query.data
-    print("DEBUG callback data:", data)  # ← увидим, что пришло
-
     if data.startswith('cancel_'):
         # возвращаем баристу в главное меню
         await show_barista_main(update)
@@ -2211,28 +2422,21 @@ async def handle_barista_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text("🔄 Возвращаюсь в меню баристы...")
 async def handle_customer_by_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ввода @username после нажатия кнопки 'Найти пользователя'"""
-    print("[DEBUG] 1. вошли в handle_customer_by_username")
     username_input = update.message.text.strip().lstrip('@').lstrip('‘').lstrip('’').lstrip('"').lstrip("'")
-    print(f"[DEBUG] 2. username_input='{username_input}'")
 
     if not username_input:
-        print("[DEBUG] 3. username_input пустой – выходим")
         await update.message.reply_text("❌ Введите корректный @username")
         set_user_state(context, 'admin_customers')
         return
 
-    print("[DEBUG] 4. ищем в БД...")
     user_data = db.get_user_by_username_exact(username_input)
-    print(f"[DEBUG] 5. user_data = {user_data}")
 
     if user_data:
-        print("[DEBUG] 6. user_data НЕ ПУСТОЙ – показываем карточку")
         customer_id, username, first_name, last_name = user_data
         purchases = db.get_user_stats(customer_id)
         promotion = db.get_promotion()
         required = promotion[2] if promotion else 7
 
-        # Приоритет: Имя Фамилия > username > Гость
         # Обрабатываем случай когда last_name = "None" (строка)
         clean_last_name = last_name if last_name and last_name != "None" else ""
         user_display_name = f"{first_name} {clean_last_name}".strip()
@@ -2257,7 +2461,7 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
             if remaining == 0:
                 status_text = "Следующий 🎁"
             else:
-                status_text = f"Ещё {remaining}"
+                status_text = f"{remaining}"
     
             text = f"""
 {user_emoji} {user_display_name}
@@ -2272,17 +2476,13 @@ async def handle_customer_by_username(update: Update, context: ContextTypes.DEFA
             [KeyboardButton("➖ Отменить покупку")],
             [KeyboardButton("🔙 Назад")]
         ]
-        print("[DEBUG] 7. отправляю сообщение с клавиатурой")
         await update.message.reply_text(text, reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
 
-        print("[DEBUG] 8. сохраняю customer_id и переключаю состояние")
         context.user_data['current_customer'] = customer_id
         context.user_data['current_username'] = username or f"{first_name} {last_name}".strip() or "Гость"
         set_user_state(context, 'admin_customer_actions')
-        print("[DEBUG] 9. выходим из функции")
         return
 
-    print("[DEBUG] 6. user_data ПУСТОЙ – сообщаем 'не найден'")
     await update.message.reply_text("❌ Пользователь не найден.")
 
 async def handle_admin_customer_search(update: Update, context: ContextTypes.DEFAULT_TYPE, search_query: str):
@@ -2390,7 +2590,7 @@ async def show_customer_card_admin(update: Update, context: ContextTypes.DEFAULT
     
     # @username
     if username and username != "Не указан":
-        user_info_parts.append(f"📱 @{username}")
+        user_info_parts.append(f"◾️ @{username}")
     
     # Телефон
     if phone:
@@ -2431,7 +2631,7 @@ async def show_customer_card_admin(update: Update, context: ContextTypes.DEFAULT
     
     # СОЗДАЕМ REPLY-КЛАВИАТУРУ (обычные кнопки)
     reply_keyboard = [
-        [KeyboardButton("✏️ Изменить данные")],
+        [KeyboardButton("✏️ Изменить данные (откл)")],
         [KeyboardButton("🔙 Назад")]
     ]
     
@@ -2482,7 +2682,7 @@ async def update_customer_card(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # @username
     if username and username != "Не указан":
-        user_info_parts.append(f"📱 @{username}")
+        user_info_parts.append(f"◾️ @{username}")
     
     # Телефон
     if phone:
@@ -2566,17 +2766,18 @@ async def handle_delete_user(update: Update, context: ContextTypes.DEFAULT_TYPE,
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Справка по командам - ТОЛЬКО для админа"""
+    """Справка по командам - РАЗНАЯ для каждой роли"""
     user = update.effective_user
+    user_id = user.id
+    username = user.username
     
-    # Проверяем, является ли пользователь админом
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ Эта команда доступна только администраторам")
-        return
+    # Определяем роль пользователя
+    role = get_user_role(user_id, username)
     
-    # Только админ видит этот текст
-    text = """
-👑 Команды администратора CoffeeRina:
+    if role == 'admin':
+        # Помощь для админа
+        text = """
+👑 Команды админа:
 
 📋 Основные команды:
 /start - Главное меню
@@ -2588,21 +2789,98 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Баристы - добавить/удалить
 • Посетители - просмотр и поиск пользователей
 • Рассылка - массовая отправка сообщений
-• Опции - настройки системы и переключение режимов
+• Опции - Переключение режимов
 
-⚙️ В режиме настроек:
-• Изменить акции - настройка программы лояльности
-• Я гость - переключиться в режим посетителя
-• Я бариста - переключиться в режим баристы
+⚙️ В Опциях:
+• Изменить акции - изменение программы лояльности
+• Я гость - переключиться на панель посетителя
+• Я бариста - переключиться на панель баристы
 
 💡 Подсказки:
 - Резервные копии создаются автоматически каждый день в 04:00
-- Для баристы просто отправьте фото QR-кода в чат
+- Для баристы просто отправьте фото QR-кода или номер в чат
 - Рассылку можно отправить и потом удалить у всех пользователей
 """
     
+    elif role == 'barista':
+        # Помощь для баристы
+        text = """
+🐾 Инструкция для баристы CoffeeRina:
+
+Акция 🎁 7-й напиток в подарок
+
+Начисляем +1 за покупку напитка
+1 чек = 1 '✔ Начислить'
+
+📋 Основные команды:
+/start - Главное меню
+/help - Эта инструкция
+
+🔍 Как найти клиента:
+
+📸 По QR-коду:
+1. Клиент показывает QR-код
+2. Сфотографируйте QR-код
+3. Отправьте фото в этот чат
+4. Появится карточка клиента
+5. Нажмите '✔ Начислить' для начисления покупки
+
+📞 По номеру телефона:
+1. Клиент называет номер (10 цифр или 4 последних)
+2. Отправьте номер в чат: 9998887766 или 7766
+3. Если клиент найден - появится карточка
+4. Если нет - используйте формат: 9996664422 Имя
+
+➕ Как добавить нового клиента:
+1. Нажмите '📲 Добавить номер'
+2. Отправьте: 9996664422 Имя
+3. Клиент создан, появится карточка
+4. Нажмите '✔ Начислить' для первой покупки
+
+💡 Подсказки:
+- Клиенты с QR-кодом: ▪️ черный квадратик
+- Клиенты без QR-кода: ▫️ белый квадратик
+- На 6-й покупке будет надпись "Следующий 🎁"
+- На 7-й покупке счетчик обнуляется (подарок)
+"""
+    
+    else:  # role == 'client'
+        # Помощь для клиента
+        text = """
+🤎 Информация для посетителя CoffeeRina:
+
+🎁 Акция: Каждый 7-й напиток в подарок!
+
+📋 Основные команды:
+/start - Главное меню  
+/help - Эта информация
+
+📱 Ваш QR-код:
+• Нажмите кнопку "◾️QR-код" чтобы получить свой QR-код
+• Показывайте QR-код при каждой покупке
+• Бариста отсканирует его и начислит покупку
+
+📞 Привязка номера телефона:
+• Нажмите "📞 Привязать номер"
+• Введите: 9996664422 ВашеИмя
+• После этого можете называть только номер телефона или последние 4 цифры
+
+📊 Отслеживание прогресса:
+• Нажмите на кнопку "🪪 Прогресс-бар" под QR-кодом
+• Увидите свой прогресс (сколько покупок из 7)
+• Можете менять стиль прогресс-бара (< >)
+
+💡 Как это работает:
+1. Скачайте QR-код или привяжите номер телефона
+2. При каждой покупке показывайте QR или называйте номер (4 цифры)
+3. Бариста начислит покупку
+4. 7-й напиток в подарок
+
+❓ По вопросам обращайтесь к баристе
+"""
+    
     await update.message.reply_text(text)
-# ================== ЗАПУСК ==================
+# ================== ЗАПУСК БОТА (BOT STARTUP) ==================
 def main():
     # Финальная инициализация для продакшена
     application = Application.builder().token(BOT_TOKEN).build()

@@ -7,11 +7,10 @@ from pyzbar.pyzbar import decode
 from PIL import Image, ImageDraw, ImageFont
 import random
 
-def generate_qr_code(user_id: int) -> io.BytesIO:
-    """Генерирует QR-код для пользователя с простым дизайном"""
+def generate_qr_code(user_id: int, user_name: str = None) -> io.BytesIO:
+    """Генерирует QR-код для пользователя"""
     qr_data = f"coffeerina:{user_id}"
     
-    # Создаем QR-код
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -21,58 +20,57 @@ def generate_qr_code(user_id: int) -> io.BytesIO:
     qr.add_data(qr_data)
     qr.make(fit=True)
     
-    # Создаем простое изображение QR-кода
     qr_img = qr.make_image(fill_color="black", back_color="white")
     
-    # Создаем простой фон
     width, height = 300, 400
-    background = Image.new('RGB', (width, height), color='#F5F5F5')  # Светло-серый фон
+    background = Image.new('RGB', (width, height), color='#A0A0A0')  # Серый фон
     
-    # Вставляем QR-код в центр
     qr_size = 250
     qr_img = qr_img.resize((qr_size, qr_size))
     
-    # Создаем белый фон для QR-кода
     qr_bg = Image.new('RGB', (qr_size + 20, qr_size + 20), color='white')
     qr_bg.paste(qr_img, (10, 10))
     
-    # Вставляем QR-код на фон
     qr_x = (width - qr_size - 20) // 2
-    qr_y = 50
+    qr_y = (height - (qr_size + 20)) // 2
     background.paste(qr_bg, (qr_x, qr_y))
     
-    # Добавляем простой текст
     draw = ImageDraw.Draw(background)
     try:
-        font = ImageFont.truetype("arial.ttf", 18)
+        font = ImageFont.truetype("arial.ttf", 14)
     except:
         font = ImageFont.load_default()
     
-    # Текст "CoffeeRina"
-    text_color = '#333333'  # Темно-серый
-    text = "CoffeeRina"
+    text_color = '#EAEAEA'
+    text = "ID"
+
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+
     text_x = (width - text_width) // 2
-    draw.text((text_x, 20), text, fill=text_color, font=font)
+    text_y = qr_y - text_height - 20
+
+    draw.text((text_x, text_y), text, fill=text_color, font=font)
     
-    # Текст "Ваш персональный QR-код"
     try:
         small_font = ImageFont.truetype("arial.ttf", 12)
     except:
         small_font = ImageFont.load_default()
     
-    small_text = "Ваш персональный QR-код"
+    small_text = "AlleyaTruda35A"
+    
     small_text_bbox = draw.textbbox((0, 0), small_text, font=small_font)
     small_text_width = small_text_bbox[2] - small_text_bbox[0]
     small_text_x = (width - small_text_width) // 2
-    draw.text((small_text_x, qr_y + qr_size + 20), small_text, fill=text_color, font=small_font)
+
+    draw.text((small_text_x, qr_y + qr_size + 30), small_text, fill=text_color, font=small_font)
     
-    # Сохраняем в BytesIO
     bio = io.BytesIO()
     background.save(bio, 'PNG')
     bio.seek(0)
     return bio
+
 
 def parse_qr_data(qr_text: str):
     """

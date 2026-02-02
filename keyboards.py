@@ -1,41 +1,35 @@
 from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 
-# ================== КЛИЕНТ ==================
+# ================== КЛИЕНТ (CLIENT) ==================
 def get_client_keyboard():
+    """Клавиатура клиента"""
     keyboard = [
-        [KeyboardButton("📱 Мой QR")],
-        [KeyboardButton("📞 Привязать номер")],  # ← Новая кнопка
-        [KeyboardButton("🎁 Акции")]
+        [KeyboardButton("◾️QR-код")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_client_keyboard_with_back():
+    """Клавиатура клиента (с кнопкой Назад)""")
     keyboard = [
-        [KeyboardButton("📱 Мой QR")],
-        [KeyboardButton("📞 Привязать номер")],
-        [KeyboardButton("🎁 Акции")],
+        [KeyboardButton("◾️QR-код")],
         [KeyboardButton("🔙 Назад")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== БАРИСТА ==================
-# ================== БАРИСТА ==================
-# ================== БАРИСТА ==================
+# ================== БАРИСТА (BARISTA) ==================
 def get_barista_keyboard():
-    """Клавиатура баристы с кнопкой +1 и добавлением клиента"""
+    """Клавиатура баристы"""
     keyboard = [
         [KeyboardButton("✔ Начислить")],
-        [KeyboardButton("📲 Добавить номер")],
-        [KeyboardButton("🧾 Инфо")]
+        [KeyboardButton("📲 Добавить номер")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 def get_barista_keyboard_with_back():
-    """Клавиатура баристы с кнопкой +1 (для админа)"""
+    """Клавиатура баристы (с кнопкой Назад)""")
     keyboard = [
         [KeyboardButton("✔ Начислить")],
         [KeyboardButton("📲 Добавить номер")],
-        [KeyboardButton("🧾 Инфо")],
         [KeyboardButton("🔙 Назад")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -48,7 +42,8 @@ def get_barista_action_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== АДМИН - ГЛАВНОЕ МЕНЮ ==================
+# ================== АДМИН: ГЛАВНОЕ МЕНЮ (ADMIN: MAIN MENU) ==================
+
 def get_admin_main_keyboard():
     keyboard = [
         [KeyboardButton("📙 Баристы"), KeyboardButton("📒 Посетители")],
@@ -56,32 +51,34 @@ def get_admin_main_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== АДМИН - УПРАВЛЕНИЕ БАРИСТАМИ ==================
+# ================== АДМИН: УПРАВЛЕНИЕ БАРИСТАМИ (ADMIN: BARISTA MANAGEMENT) ==================
+
 def get_admin_barista_keyboard():
     keyboard = [
         [KeyboardButton("➕ Добавить"), KeyboardButton("➖ Удалить")],
-        [KeyboardButton("🔙 Назад")]  # ← УБРАЛИ "📋 Список"
+        [KeyboardButton("🔙 Назад")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== АДМИН - УПРАВЛЕНИЕ ПОСЕТИТЕЛЯМИ ==================
+# ================== АДМИН: УПРАВЛЕНИЕ ПОСЕТИТЕЛЯМИ (ADMIN: CUSTOMER MANAGEMENT) ==================
 def get_admin_customers_keyboard_after_list():
-    """То же самое - только Назад после списка"""
     return ReplyKeyboardMarkup(
         [[KeyboardButton("🔙 Назад")]],
         resize_keyboard=True
     )
 
-# ================== АДМИН - НАСТРОЙКИ ==================
+# ================== АДМИН: НАСТРОЙКИ (ADMIN: SETTINGS) ==================
+
 def get_admin_settings_keyboard():
     keyboard = [
         [KeyboardButton("📝 Изменить акции")],
         [KeyboardButton("🤎 Я гость"), KeyboardButton("🐾 Я бариста")],
-        [KeyboardButton("🔙 Назад")]
+        [KeyboardButton("🔙 Назад ")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== АДМИН - УПРАВЛЕНИЕ АКЦИЯМИ ==================
+# ================== АДМИН: УПРАВЛЕНИЕ АКЦИЯМИ (ADMIN: PROMOTION MANAGEMENT) ==================
+
 def get_admin_promotion_keyboard():
     keyboard = [
         [KeyboardButton("📝 Название"), KeyboardButton("7️⃣ Условие")],
@@ -90,7 +87,8 @@ def get_admin_promotion_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== ПЕРЕКЛЮЧЕНИЕ РОЛЕЙ ==================
+# ================== ПЕРЕКЛЮЧЕНИЕ РОЛЕЙ (ROLE SWITCHING) ==================
+
 def get_role_switcher_keyboard():
     keyboard = [
         [KeyboardButton("👑 Режим админа")],
