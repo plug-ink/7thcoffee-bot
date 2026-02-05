@@ -26,7 +26,7 @@
 ## Скриншоты
 
 ### Клиент
-![Клиентский интерфейс: QR-код и прогресс-бар](screenshots/client-qr-and-progress.png)  
+![Пользовательский интерфейс: QR-код и прогресс-бар](screenshots/client-qr-and-progress.png)  
 *Клиент видит QR-код, может вызвать прогресс-бар с кнопкой для привязки номера телефона.*
 
 ### Бариста
@@ -48,25 +48,31 @@
 ## Установка и запуск (локально)
 
 1. Клонируйте репозиторий  
-   ```bash
-   git clone https://github.com/plug-ink/Coffee_bot.git
-   cd Coffee_bot
-
+```bash
+git clone https://github.com/plug-ink/Coffee_bot.git
+cd Coffee_bot
+```
 2. Создайте виртуальное окружение
-   python -m venv venv
-   venv\Scripts\activate  # Windows
-   # source venv/bin/activate  # Linux/Mac
-
+```bash
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Linux/Mac
+```
 3. Установите зависимости
-   pip install -r requirements.txt
-
+```bash
+pip install -r requirements.txt
+```
 4. Создайте файл .env в корне
-   BOT_TOKEN=ваш_токен_бота
-   ADMIN_IDS=ваш_telegram_id    # или несколько через запятую: 123456789,987654321
-   
+```bash
+BOT_TOKEN=ваш_токен_бота
+ADMIN_IDS=ваш_telegram_id    # или несколько через запятую: 123456789, 987654321
+```   
 5. Запустите
-   python bot.py
-
+```bash
+python bot.py
+```
 Проект стабильно работает в реальной кофейне — production-версия.
+
 Вопросы, предложения, форки — welcome в issues!
+
 Лицензия: MIT
