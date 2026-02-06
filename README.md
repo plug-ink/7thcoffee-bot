@@ -29,7 +29,7 @@
 |--------|---------|--------|
 | <img src="screenshots/client-qr-and-progress.jpg" style="max-width:260px;"> | <img src="screenshots/barista-card-search.jpg" style="max-width:260px;"> | <img src="screenshots/admin-main-options.jpg" style="max-width:260px;"> |
 
-**Клиент:** QR-код и привязка номера • **Бариста:** поиск и начисление • **Админ:** управление ролями и меню
+**Клиент:** QR-код и привязка номера • **Бариста:** поиск и начисление • **Админ:** главное меню и роли
 
 ## Технологии
 
