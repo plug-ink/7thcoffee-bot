@@ -25,17 +25,11 @@
 
 ## Скриншоты
 
-### Клиент
-<img src="screenshots/client-qr-and-progress.jpg" width="300">  
-*Клиент видит QR-код, может вызвать прогресс-бар с кнопкой для привязки номера телефона.*
+| Клиент | Бариста | Админ |
+|--------|---------|--------|
+| <img src="screenshots/client-qr-and-progress.jpg" style="max-width:260px;"> | <img src="screenshots/barista-card-search.jpg" style="max-width:260px;"> | <img src="screenshots/admin-main-options.jpg" style="max-width:260px;"> |
 
-### Бариста
-<img src="screenshots/barista-card-search.jpg" width="300">  
-*Бариста вводит 4 цифры номера → видит карточку клиента и кнопку «Начислить».*
-
-### Админ-панель
-<img src="screenshots/admin-main-options.jpg" width="300">  
-*Главное меню админа и опции переключений на роль клиента/баристы.*
+**Клиент:** QR-код и привязка номера • **Бариста:** поиск и начисление • **Админ:** управление ролями и меню
 
 ## Технологии
 
