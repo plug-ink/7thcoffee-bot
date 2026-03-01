@@ -8,6 +8,7 @@ class Database:
         self.conn = sqlite3.connect(db_name, check_same_thread=False)
         self.create_tables()
         self.update_database_schema()
+        self.migrate_data()
 
     def create_tables(self):
         cursor = self.conn.cursor()
@@ -66,10 +67,40 @@ class Database:
         ''')
         
         self.conn.commit()
-        print("✅ База данных инициализирована")
+
+    def update_database_schema(self):
+        """Обновляет структуру базы данных, добавляя новые поля"""
+        cursor = self.conn.cursor()
+        
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        new_columns = {
+            'free_drinks_given': 'INTEGER DEFAULT 0',
+            'total_purchases': 'INTEGER DEFAULT 0',
+            'last_visit': 'TIMESTAMP'
+        }
+        
+        for column_name, column_type in new_columns.items():
+            if column_name not in columns:
+                cursor.execute(f'ALTER TABLE users ADD COLUMN {column_name} {column_type}')
+                print(f"✅ Добавлено поле {column_name} в таблицу users")
+        
+        self.conn.commit()
+
+    def migrate_data(self):
+        """Переносит существующие данные в новые поля"""
+        cursor = self.conn.cursor()
+        
+        cursor.execute('UPDATE users SET free_drinks_given = 0 WHERE free_drinks_given IS NULL')
+        
+        cursor.execute('UPDATE users SET total_purchases = purchases_count WHERE total_purchases IS NULL')
+        
+        cursor.execute('UPDATE users SET last_visit = created_at WHERE last_visit IS NULL')
+        
+        self.conn.commit()
 
     def delete_user(self, user_id: int) -> bool:
-        """Удаляет пользователя из базы данных"""
         cursor = self.conn.cursor()
         try:
             cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
@@ -80,7 +111,6 @@ class Database:
             return False
 
     def find_user_by_phone_last4(self, last4_digits):
-        """Ищет пользователя по последним 4 цифрам номера телефона"""
         cursor = self.conn.cursor()
         
         if not last4_digits.isdigit() or len(last4_digits) != 4:
@@ -103,7 +133,6 @@ class Database:
         self.conn.commit()
         return cursor.rowcount > 0
     
-# ================== ПОЛЬЗОВАТЕЛИ (USERS) ==================
     def get_or_create_user(self, user_id, username="", first_name="", last_name=""):
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -124,27 +153,49 @@ class Database:
         return result[0] if result else 0
 
     def update_user_purchases(self, user_id, change):
-        """Изменяет счётчик покупок с авто-обнулением при достижении акции"""
         promo = self.get_promotion()
         required = promo[2] if promo else 7
 
         cursor = self.conn.cursor()
-        cursor.execute('SELECT purchases_count FROM users WHERE user_id = ?', (user_id,))
-        current = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT purchases_count, total_purchases, free_drinks_given FROM users WHERE user_id = ?', (user_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            return 0, False
+            
+        current = result[0]
+        total = result[1] or 0
+        free_given = result[2] or 0
     
         new_val = current + change
     
-        if change == +1 and new_val >= required:
-            new_val = 0
-    
+        was_gift = False
+        
+        if change == +1:
+            total += 1
+            if new_val >= required:
+                new_val = 0
+                free_given += 1
+                was_gift = True
+        
         new_val = max(0, new_val)
+        
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-        cursor.execute('UPDATE users SET purchases_count = ? WHERE user_id = ?', (new_val, user_id))
+        cursor.execute('''
+            UPDATE users 
+            SET purchases_count = ?, 
+                total_purchases = ?, 
+                free_drinks_given = ?,
+                last_visit = ?
+            WHERE user_id = ?
+        ''', (new_val, total, free_given, now, user_id))
+        
         self.conn.commit()
-        return new_val
+        return new_val, was_gift
 
     def search_user_by_username(self, username):
-        """Поиск пользователя по username"""
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE username LIKE ?', (f'%{username}%',))
         return cursor.fetchall()
@@ -154,7 +205,6 @@ class Database:
         cursor.execute('SELECT user_id, username, first_name, last_name FROM users WHERE username = ? LIMIT 1', (username,))
         return cursor.fetchone()
 
-# ================== БАРИСТЫ (BARISTAS) ==================
     def is_user_barista(self, username):
         if not username:
             return False
@@ -183,7 +233,6 @@ class Database:
         return cursor.fetchall()
     
     def clean_invalid_baristas(self):
-        """Удаляет некорректные записи бариста"""
         cursor = self.conn.cursor()
         invalid_usernames = ['Список', 'Удалить', 'Добавить', 'Назад', '📋 Список', '➖ Удалить', '➕ Добавить', '🔙 Назад']
         for username in invalid_usernames:
@@ -191,7 +240,6 @@ class Database:
         self.conn.commit()
         return True
 
-# ================== АКЦИИ (PROMOTIONS) ==================
     def get_promotion(self):
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM promotions WHERE is_active = 1 LIMIT 1')
@@ -207,7 +255,6 @@ class Database:
             cursor.execute('UPDATE promotions SET name = ? WHERE is_active = 1', (name,))
         self.conn.commit()
 
-# ================== АДМИНЫ (ADMINS) ==================
     def add_admin(self, user_id: int) -> bool:
         cursor = self.conn.cursor()
         cursor.execute('INSERT OR REPLACE INTO admins (user_id, is_active) VALUES (?, 1)', (user_id,))
@@ -230,9 +277,7 @@ class Database:
         cursor.execute('SELECT user_id FROM admins WHERE is_active = 1')
         return [row[0] for row in cursor.fetchall()]
     
-# ================== БЭКАП (BACKUP) ==================
     def backup_db(self) -> str:
-        """Создаёт копию БД и возвращает путь до файла"""
         os.makedirs('backup', exist_ok=True)
         date_str = datetime.now().strftime('%Y-%m-%d_%H-%M')
         backup_path = f'backup/coffee_bot_{date_str}.db'
@@ -241,7 +286,6 @@ class Database:
         return backup_path
     
     def cleanup_old_backups(self, keep=7):
-        """Оставляет только keep последних копий"""
         try:
             files = sorted(Path('backup').glob('coffee_bot_*.db'))
             for f in files[:-keep]:
@@ -251,26 +295,36 @@ class Database:
     
     def get_all_users(self):
         cursor = self.conn.cursor()
-        cursor.execute('SELECT user_id, username, first_name, last_name, purchases_count, phone FROM users ORDER BY created_at DESC')
+        cursor.execute('''
+            SELECT 
+                user_id, 
+                username, 
+                first_name, 
+                last_name, 
+                purchases_count, 
+                phone,
+                free_drinks_given,
+                total_purchases,
+                last_visit,
+                created_at
+            FROM users 
+            ORDER BY created_at DESC
+        ''')
         return cursor.fetchall()
     
     def get_all_user_ids(self): 
-        """Получить всех пользователей бота (только user_id для рассылки)"""
         cursor = self.conn.cursor()
         cursor.execute('SELECT user_id FROM users')
         return [row[0] for row in cursor.fetchall()]
     
     def find_user_by_phone(self, phone_number):
-        """Ищет пользователя по номеру телефона"""
         cursor = self.conn.cursor()
         normalized_phone = ''.join(filter(str.isdigit, phone_number))
         cursor.execute('SELECT user_id FROM users WHERE phone = ?', (normalized_phone,))
         result = cursor.fetchone()
         return result[0] if result else None
     
-# ================== СТИЛИ ПРОГРЕСС-БАРА (PROGRESS BAR STYLES) ==================
     def save_user_style(self, user_id: int, style_index: int) -> bool:
-        """Сохраняет выбранный стиль прогресс-бара для пользователя"""
         cursor = self.conn.cursor()
         try:
             cursor.execute('''
@@ -284,7 +338,6 @@ class Database:
             return False
 
     def get_user_style(self, user_id: int) -> int:
-        """Возвращает сохраненный стиль прогресс-бара пользователя"""
         cursor = self.conn.cursor()
         try:
             cursor.execute('SELECT style_index FROM user_styles WHERE user_id = ?', (user_id,))
@@ -295,20 +348,9 @@ class Database:
             return 0
 
     def get_user_style_if_exists(self, user_id: int):
-        """Возвращает стиль или None если не установлен"""
         cursor = self.conn.cursor()
         cursor.execute('SELECT style_index FROM user_styles WHERE user_id = ?', (user_id,))
         result = cursor.fetchone()
         return result[0] if result else None
-
-    def update_database_schema(self):
-        """Обновляет структуру базы данных если нужно"""
-        cursor = self.conn.cursor()
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if 'phone' not in columns:
-            cursor.execute('ALTER TABLE users ADD COLUMN phone TEXT')
-            self.conn.commit()
-            print("✅ Добавлено поле phone в таблицу users")
 
     

@@ -1,4 +1,4 @@
-**.db
+*.db
 backup/
 __pycache__/
 *.pyc
@@ -9,3 +9,5 @@ venv/
 .vscode/
 .env.prod
 .env.test
+bot.log
+service-account.json

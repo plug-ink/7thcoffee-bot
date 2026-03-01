@@ -11,6 +11,7 @@ def generate_qr_code(user_id: int, user_name: str = None) -> io.BytesIO:
     """Генерирует QR-код для пользователя"""
     qr_data = f"coffeerina:{user_id}"
     
+    # Создаем QR-код
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -20,27 +21,34 @@ def generate_qr_code(user_id: int, user_name: str = None) -> io.BytesIO:
     qr.add_data(qr_data)
     qr.make(fit=True)
     
+    # Создаем изображение QR-кода
     qr_img = qr.make_image(fill_color="black", back_color="white")
     
+    # Создаем фон
     width, height = 300, 400
     background = Image.new('RGB', (width, height), color='#A0A0A0')  # Серый фон
     
+    # Размер QR-кода
     qr_size = 250
     qr_img = qr_img.resize((qr_size, qr_size))
     
+    # Белый блок под QR
     qr_bg = Image.new('RGB', (qr_size + 20, qr_size + 20), color='white')
     qr_bg.paste(qr_img, (10, 10))
     
+    # Координаты QR-кода
     qr_x = (width - qr_size - 20) // 2
     qr_y = (height - (qr_size + 20)) // 2
     background.paste(qr_bg, (qr_x, qr_y))
     
+    # Рисуем текст
     draw = ImageDraw.Draw(background)
     try:
         font = ImageFont.truetype("arial.ttf", 14)
     except:
         font = ImageFont.load_default()
     
+    # Верхняя надпись "yourQRcode"
     text_color = '#EAEAEA'
     text = "ID"
 
@@ -50,9 +58,11 @@ def generate_qr_code(user_id: int, user_name: str = None) -> io.BytesIO:
 
     text_x = (width - text_width) // 2
     text_y = qr_y - text_height - 20
+  # прижимаем к белому полю
 
     draw.text((text_x, text_y), text, fill=text_color, font=font)
     
+    # Нижняя надпись
     try:
         small_font = ImageFont.truetype("arial.ttf", 12)
     except:
@@ -66,6 +76,7 @@ def generate_qr_code(user_id: int, user_name: str = None) -> io.BytesIO:
 
     draw.text((small_text_x, qr_y + qr_size + 30), small_text, fill=text_color, font=small_font)
     
+    # Сохраняем в BytesIO
     bio = io.BytesIO()
     background.save(bio, 'PNG')
     bio.seek(0)
