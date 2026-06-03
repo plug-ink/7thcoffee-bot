@@ -9,3 +9,6 @@ venv/
 .vscode/
 .env.prod
 .env.test
+*.log
+*.sh
+*.json

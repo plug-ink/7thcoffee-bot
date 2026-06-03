@@ -1,105 +1,58 @@
-from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-# ================== КЛИЕНТ (CLIENT) ==================
+
+# ================== КЛИЕНТ ==================
 def get_client_keyboard():
-    """Клавиатура клиента"""
-    keyboard = [
-        [KeyboardButton("◾️QR-код")]
-    ]
+    """Клавиатура клиента (только QR-код)"""
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
+
+    keyboard = [[KeyboardButton("◾️QR-код")]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def get_client_keyboard_with_back():
-    """Клавиатура клиента (с кнопкой Назад)""")
-    keyboard = [
-        [KeyboardButton("◾️QR-код")],
-        [KeyboardButton("🔙 Назад")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================== БАРИСТА (BARISTA) ==================
-def get_barista_keyboard():
-    """Клавиатура баристы"""
-    keyboard = [
-        [KeyboardButton("✔ Начислить")],
-        [KeyboardButton("📲 Добавить номер")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-def get_barista_keyboard_with_back():
-    """Клавиатура баристы (с кнопкой Назад)""")
-    keyboard = [
-        [KeyboardButton("✔ Начислить")],
-        [KeyboardButton("📲 Добавить номер")],
-        [KeyboardButton("🔙 Назад")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-def get_barista_action_keyboard():
-    """Клавиатура после сканирования QR"""
-    keyboard = [
-        [KeyboardButton("✔ Засчитать покупку")],
-        [KeyboardButton("❌ Отменить")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-# ================== АДМИН: ГЛАВНОЕ МЕНЮ (ADMIN: MAIN MENU) ==================
-
+# ================== АДМИН - ГЛАВНОЕ МЕНЮ (ТОЛЬКО ИНЛАЙН) ==================
 def get_admin_main_keyboard():
+    """Главное меню админа с инлайн-кнопками"""
     keyboard = [
-        [KeyboardButton("📙 Баристы"), KeyboardButton("📒 Посетители")],
-        [KeyboardButton("📣 Рассылка"), KeyboardButton("⚙️ Опции")]
+        [InlineKeyboardButton("📒 Пользователи", callback_data="admin_users")],
+        [InlineKeyboardButton("📙 Баристы", callback_data="admin_baristas")],
+        [InlineKeyboardButton("📣 Рассылка", callback_data="admin_broadcast")],
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
-# ================== АДМИН: УПРАВЛЕНИЕ БАРИСТАМИ (ADMIN: BARISTA MANAGEMENT) ==================
 
-def get_admin_barista_keyboard():
+# ================== АДМИН - УПРАВЛЕНИЕ БАРИСТАМИ (ИНЛАЙН) ==================
+def get_admin_barista_inline_keyboard():
+    """Инлайн-клавиатура для управления баристами"""
     keyboard = [
-        [KeyboardButton("➕ Добавить"), KeyboardButton("➖ Удалить")],
-        [KeyboardButton("🔙 Назад")]
+        [InlineKeyboardButton("➕ Добавить баристу", callback_data="barista_add")],
+        [InlineKeyboardButton("➖ Удалить баристу", callback_data="barista_remove")],
+        [InlineKeyboardButton("📋 Список баристов", callback_data="barista_list")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_admin_main")],
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
-# ================== АДМИН: УПРАВЛЕНИЕ ПОСЕТИТЕЛЯМИ (ADMIN: CUSTOMER MANAGEMENT) ==================
-def get_admin_customers_keyboard_after_list():
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton("🔙 Назад")]],
-        resize_keyboard=True
-    )
 
-# ================== АДМИН: НАСТРОЙКИ (ADMIN: SETTINGS) ==================
-
-def get_admin_settings_keyboard():
+def get_admin_barista_back_keyboard():
+    """Клавиатура с кнопкой назад для режима добавления/удаления"""
     keyboard = [
-        [KeyboardButton("📝 Изменить акции")],
-        [KeyboardButton("🤎 Я гость"), KeyboardButton("🐾 Я бариста")],
-        [KeyboardButton("🔙 Назад ")]
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_barista_menu")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
-# ================== АДМИН: УПРАВЛЕНИЕ АКЦИЯМИ (ADMIN: PROMOTION MANAGEMENT) ==================
 
-def get_admin_promotion_keyboard():
+# ================== АДМИН - УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (ИНЛАЙН) ==================
+def get_admin_users_inline_keyboard():
+    """Инлайн-клавиатура для управления пользователями"""
     keyboard = [
-        [KeyboardButton("📝 Название"), KeyboardButton("7️⃣ Условие")],
-        [KeyboardButton("📖 Описание")],
-        [KeyboardButton("🔙 Назад")]
+        [InlineKeyboardButton("📋 Список пользователей", callback_data="users_list")],
+        [InlineKeyboardButton("🔍 Найти пользователя", callback_data="users_search")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_admin_main")],
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
-# ================== ПЕРЕКЛЮЧЕНИЕ РОЛЕЙ (ROLE SWITCHING) ==================
 
-def get_role_switcher_keyboard():
-    keyboard = [
-        [KeyboardButton("👑 Режим админа")],
-        [KeyboardButton("👨‍💼 Я бариста"), KeyboardButton("👤 Я ")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-def get_admin_customers_keyboard():
-    """Клавиатура для раздела пользователей (только Назад)"""
-    keyboard = [
-        [KeyboardButton("🔙 Назад")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
+def get_admin_users_back_keyboard():
+    """Клавиатура с кнопкой назад для поиска"""
+    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back_to_users_menu")]]
+    return InlineKeyboardMarkup(keyboard)
